@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InvestAI — Smart Portfolio Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #07080f; color: white; font-family: 'Inter', sans-serif; }
+    .glow-green { box-shadow: 0 0 30px rgba(52,211,153,0.12); }
+    .gradient-text { background: linear-gradient(135deg, #34d399, #60a5fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    select, option { background: #1a1b2e; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <!-- Ambient -->
+  <div class="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
+    <div class="absolute -top-20 right-0 w-[500px] h-[500px] rounded-full bg-emerald-600/15 blur-[120px]"></div>
+    <div class="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-blue-600/10 blur-[100px]"></div>
+  </div>
+
+  <!-- Nav -->
+  <nav class="border-b border-white/5 backdrop-blur-xl bg-white/[0.02] sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-blue-500 flex items-center justify-center font-bold text-sm">I</div>
+        <span class="font-semibold text-lg">InvestAI</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-white/40">Real-time · AI-powered</span>
+        <button class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium transition-colors">Get started</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="max-w-7xl mx-auto px-6 pt-12 pb-24">
+    <!-- Header -->
+    <div class="mb-10">
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-medium mb-4">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        Live market data
+      </div>
+      <h1 class="text-4xl md:text-5xl font-bold tracking-tight mb-2">
+        Your portfolio,<br><span class="gradient-text">analyzed by AI</span>
+      </h1>
+      <p class="text-white/50">Add your holdings and get AI-powered insights on performance, risk, and rebalancing opportunities.</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <!-- Holdings input -->
+      <div class="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-7">
+        <h2 class="font-semibold mb-5">Add holdings</h2>
+        <div id="holdings" class="space-y-3 mb-4">
+          <div class="grid grid-cols-3 gap-2">
+            <input placeholder="Ticker" class="col-span-1 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-all uppercase" />
+            <input placeholder="Shares" type="number" class="col-span-1 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-all" />
+            <input placeholder="Buy $" type="number" class="col-span-1 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-all" />
+          </div>
+        </div>
+        <button onclick="addRow()" class="w-full py-2.5 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-sm text-white/60 hover:text-white transition-all mb-4">
+          + Add another
+        </button>
+        <button onclick="analyzePortfolio()" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 font-semibold text-sm transition-all flex items-center justify-center gap-2">
+          <span id="analyze-btn">Analyze portfolio ✦</span>
+        </button>
+      </div>
+
+      <!-- Results -->
+      <div class="lg:col-span-2 space-y-5">
+        <!-- Summary cards -->
+        <div id="summary-cards" class="grid grid-cols-3 gap-4 hidden">
+          <div class="rounded-xl border border-white/10 bg-white/[0.03] p-5">
+            <div class="text-xs text-white/40 mb-1">Total Value</div>
+            <div class="text-2xl font-bold" id="total-value">—</div>
+          </div>
+          <div class="rounded-xl border border-white/10 bg-white/[0.03] p-5">
+            <div class="text-xs text-white/40 mb-1">Total Cost</div>
+            <div class="text-2xl font-bold" id="total-cost">—</div>
+          </div>
+          <div class="rounded-xl border border-white/10 bg-white/[0.03] p-5">
+            <div class="text-xs text-white/40 mb-1">Return</div>
+            <div class="text-2xl font-bold" id="total-return">—</div>
+          </div>
+        </div>
+
+        <!-- Holdings table -->
+        <div id="holdings-table" class="rounded-2xl border border-white/10 bg-white/[0.03] hidden overflow-hidden">
+          <table class="w-full text-sm">
+            <thead class="border-b border-white/5">
+              <tr class="text-xs text-white/40 uppercase">
+                <th class="text-left px-5 py-3">Ticker</th>
+                <th class="text-right px-5 py-3">Price</th>
+                <th class="text-right px-5 py-3">Value</th>
+                <th class="text-right px-5 py-3">Return</th>
+              </tr>
+            </thead>
+            <tbody id="holdings-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- AI insights -->
+        <div id="ai-insights-card" class="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.05] p-7 hidden">
+          <div class="flex items-center gap-2 mb-4">
+            <div class="w-6 h-6 rounded-md bg-emerald-500/20 flex items-center justify-center text-xs">✦</div>
+            <h3 class="font-semibold">AI Insights</h3>
+          </div>
+          <div id="ai-insights-text" class="text-sm text-white/70 leading-relaxed whitespace-pre-wrap"></div>
+        </div>
+
+        <!-- Empty state -->
+        <div id="empty-state" class="rounded-2xl border border-white/5 bg-white/[0.02] py-24 flex flex-col items-center gap-3">
+          <div class="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center text-2xl">📈</div>
+          <p class="text-white/40 text-sm text-center max-w-xs">Add your stock holdings and click analyze to see real-time performance and AI recommendations</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function addRow() {
+      const row = document.createElement('div');
+      row.className = 'grid grid-cols-3 gap-2';
+      row.innerHTML = `
+        <input placeholder="Ticker" class="col-span-1 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-all uppercase" />
+        <input placeholder="Shares" type="number" class="col-span-1 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-all" />
+        <input placeholder="Buy $" type="number" class="col-span-1 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-all" />
+      `;
+      document.getElementById('holdings').appendChild(row);
+    }
+
+    async function analyzePortfolio() {
+      const rows = document.getElementById('holdings').querySelectorAll('div');
+      const holdings = [];
+      rows.forEach(row => {
+        const inputs = row.querySelectorAll('input');
+        if (inputs[0].value && inputs[1].value && inputs[2].value) {
+          holdings.push({ ticker: inputs[0].value, shares: parseFloat(inputs[1].value), buy_price: parseFloat(inputs[2].value) });
+        }
+      });
+      if (!holdings.length) return alert('Add at least one holding');
+
+      const btn = document.getElementById('analyze-btn');
+      btn.textContent = 'Analyzing...';
+
+      try {
+        const [portfolioRes, insightsRes] = await Promise.all([
+          fetch('/api/portfolio/analyze', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({holdings}) }),
+          fetch('/api/analysis/ai-insights', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({portfolio_data: {holdings}, question: 'Analyze my portfolio'}) })
+        ]);
+        const portfolio = await portfolioRes.json();
+        const insights = await insightsRes.json();
+
+        renderPortfolio(portfolio);
+        renderInsights(insights.insights);
+        document.getElementById('empty-state').classList.add('hidden');
+      } catch (e) {
+        alert('Error connecting to API. Make sure the backend is running on :8000');
+      } finally {
+        btn.textContent = 'Analyze portfolio ✦';
+      }
+    }
+
+    function renderPortfolio(data) {
+      document.getElementById('total-value').textContent = '$' + data.total_value?.toLocaleString();
+      document.getElementById('total-cost').textContent = '$' + data.total_cost?.toLocaleString();
+      const ret = data.total_gain_loss_pct;
+      const retEl = document.getElementById('total-return');
+      retEl.textContent = (ret >= 0 ? '+' : '') + ret + '%';
+      retEl.className = 'text-2xl font-bold ' + (ret >= 0 ? 'text-emerald-400' : 'text-red-400');
+
+      document.getElementById('summary-cards').classList.remove('hidden');
+
+      const tbody = document.getElementById('holdings-tbody');
+      tbody.innerHTML = (data.holdings || []).map(h => `
+        <tr class="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
+          <td class="px-5 py-3.5 font-semibold">${h.ticker}</td>
+          <td class="px-5 py-3.5 text-right text-white/70">$${h.current_price}</td>
+          <td class="px-5 py-3.5 text-right">$${h.current_value?.toLocaleString()}</td>
+          <td class="px-5 py-3.5 text-right ${h.gain_loss_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}">
+            ${h.gain_loss_pct >= 0 ? '+' : ''}${h.gain_loss_pct}%
+          </td>
+        </tr>`).join('');
+      document.getElementById('holdings-table').classList.remove('hidden');
+    }
+
+    function renderInsights(text) {
+      document.getElementById('ai-insights-text').textContent = text;
+      document.getElementById('ai-insights-card').classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
