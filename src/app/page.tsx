@@ -2,71 +2,40 @@
 import { useState, useEffect } from 'react'
 
 interface Holding { ticker: string; shares: string; buyPrice: string }
-interface Result { ticker: string; shares: number; buy_price: number; current_price: number; current_value: number; gain_loss_pct: number; error?: string; prevValue?: number }
+interface Result { ticker: string; shares: number; buy_price: number; current_price: number; current_value: number; gain_loss_pct: number; error?: string }
 interface HistoryEntry { date: string; value: number; cost: number }
-interface PortfolioResult { holdings: Result[]; total_value: number; total_cost: number; total_gain_loss_pct: number; insights?: string; news?: NewsItem[] }
-interface NewsItem { ticker: string; headline: string; url: string; source: string }
+interface PortfolioResult { holdings: Result[]; total_value: number; total_cost: number; total_gain_loss_pct: number; insights?: string }
 interface Alert { ticker: string; targetPrice: number; direction: 'above' | 'below'; triggered?: boolean }
 
 const COLORS: Record<string, string> = {
-  AAPL:'#6366f1', MSFT:'#0ea5e9', GOOGL:'#f59e0b', AMZN:'#f97316',
-  TSLA:'#ef4444', META:'#3b82f6', NVDA:'#8b5cf6', NFLX:'#ef4444',
-  JPM:'#0ea5e9', BRK:'#f59e0b', default: '#10b981',
+  AAPL:'#00ff64', MSFT:'#00d4ff', GOOGL:'#ffaa00', AMZN:'#ff6600',
+  TSLA:'#ff4444', META:'#4488ff', NVDA:'#aa44ff', NFLX:'#ff3333',
+  JPM:'#00ccff', default: '#00ff64',
 }
 
-function MiniChart({ history }: { history: HistoryEntry[] }) {
-  if (history.length < 2) return null
+function MiniSparkline({ history }: { history: HistoryEntry[] }) {
+  if (history.length < 2) return <span className="text-xs opacity-30">no data</span>
   const vals = history.map(h => h.value)
   const min = Math.min(...vals), max = Math.max(...vals)
   const range = max - min || 1
-  const w = 200, h = 50
+  const w = 80, h = 24
   const pts = vals.map((v, i) => `${(i / (vals.length - 1)) * w},${h - ((v - min) / range) * (h - 4) - 2}`)
-  const color = vals[vals.length - 1] >= vals[0] ? '#10b981' : '#ef4444'
+  const up = vals[vals.length - 1] >= vals[0]
   return (
-    <svg width={w} height={h} className="opacity-80">
-      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+    <svg width={w} height={h}>
+      <polyline points={pts.join(' ')} fill="none" stroke={up ? '#00ff64' : '#ff4444'} strokeWidth="1.5" strokeLinejoin="round" />
     </svg>
   )
 }
 
-function PieChart({ holdings }: { holdings: Result[] }) {
+function AllocationBar({ holdings, total }: { holdings: Result[]; total: number }) {
   const valid = holdings.filter(h => !h.error && h.current_value > 0)
-  if (valid.length === 0) return null
-  const total = valid.reduce((s, h) => s + h.current_value, 0)
-  let cumulAngle = 0
-  const slices = valid.map(h => {
-    const pct = h.current_value / total
-    const angle = pct * 2 * Math.PI
-    const start = cumulAngle
-    cumulAngle += angle
-    return { ...h, pct, startAngle: start, endAngle: cumulAngle }
-  })
-  const r = 60, cx = 70, cy = 70
-  function arc(s: typeof slices[0]) {
-    const x1 = cx + r * Math.cos(s.startAngle - Math.PI / 2)
-    const y1 = cy + r * Math.sin(s.startAngle - Math.PI / 2)
-    const x2 = cx + r * Math.cos(s.endAngle - Math.PI / 2)
-    const y2 = cy + r * Math.sin(s.endAngle - Math.PI / 2)
-    const large = s.endAngle - s.startAngle > Math.PI ? 1 : 0
-    return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`
-  }
   return (
-    <div className="flex items-center gap-4">
-      <svg width={140} height={140}>
-        {slices.map((s, i) => (
-          <path key={i} d={arc(s)} fill={COLORS[s.ticker] ?? COLORS.default} opacity={0.85} />
-        ))}
-        <circle cx={cx} cy={cy} r={30} fill="#0a0f0a" />
-      </svg>
-      <div className="space-y-1.5">
-        {slices.map(s => (
-          <div key={s.ticker} className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: COLORS[s.ticker] ?? COLORS.default }} />
-            <span className="text-xs text-white/70">{s.ticker}</span>
-            <span className="text-xs text-white/40">{(s.pct * 100).toFixed(0)}%</span>
-          </div>
-        ))}
-      </div>
+    <div className="flex h-2 rounded-full overflow-hidden gap-px">
+      {valid.map(h => (
+        <div key={h.ticker} className="h-full transition-all duration-700"
+          style={{ width: `${(h.current_value / total * 100).toFixed(1)}%`, background: COLORS[h.ticker] ?? COLORS.default }} />
+      ))}
     </div>
   )
 }
@@ -81,9 +50,9 @@ export default function Home() {
   const [alertTicker, setAlertTicker] = useState('')
   const [alertPrice, setAlertPrice] = useState('')
   const [alertDir, setAlertDir] = useState<'above' | 'below'>('above')
-  const [tab, setTab] = useState<'holdings' | 'chart' | 'alerts' | 'news'>('holdings')
+  const [tab, setTab] = useState<'holdings' | 'allocation' | 'insights' | 'alerts'>('holdings')
+  const [time, setTime] = useState('')
 
-  // Load history from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem('wealthpilot-history')
@@ -91,6 +60,10 @@ export default function Home() {
       const savedAlerts = localStorage.getItem('wealthpilot-alerts')
       if (savedAlerts) setAlerts(JSON.parse(savedAlerts))
     } catch { /* ignore */ }
+    const tick = () => setTime(new Date().toLocaleTimeString('en-US', { hour12: false }))
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
   }, [])
 
   const addRow = () => setHoldings(h => [...h, { ticker: '', shares: '', buyPrice: '' }])
@@ -110,27 +83,21 @@ export default function Home() {
       })
       const data = await res.json()
       setResult(data)
-
-      // Save portfolio value to history
       if (data.total_value > 0) {
         const entry: HistoryEntry = { date: new Date().toISOString().split('T')[0], value: data.total_value, cost: data.total_cost }
         const newHistory = [...history.filter(h => h.date !== entry.date), entry].slice(-30)
         setHistory(newHistory)
         localStorage.setItem('wealthpilot-history', JSON.stringify(newHistory))
       }
-
-      // Check alerts
       if (data.holdings) {
         const updatedAlerts = alerts.map(a => {
           const holding = data.holdings.find((h: Result) => h.ticker === a.ticker)
           if (!holding) return a
-          const triggered = a.direction === 'above' ? holding.current_price >= a.targetPrice : holding.current_price <= a.targetPrice
-          return { ...a, triggered }
+          return { ...a, triggered: a.direction === 'above' ? holding.current_price >= a.targetPrice : holding.current_price <= a.targetPrice }
         })
         setAlerts(updatedAlerts)
         localStorage.setItem('wealthpilot-alerts', JSON.stringify(updatedAlerts))
       }
-
       setTab('holdings')
     } finally { setLoading(false) }
   }
@@ -143,188 +110,240 @@ export default function Home() {
     setAlertTicker(''); setAlertPrice('')
   }
 
-  const input = 'w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/25 focus:outline-none focus:border-emerald-500/50 transition-all'
-
   const triggeredAlerts = alerts.filter(a => a.triggered)
+  const inp = 'w-full bg-black border border-green-900/60 rounded px-3 py-2 text-sm text-green-300 placeholder-green-900 focus:outline-none focus:border-green-500/60 transition-all font-mono uppercase'
+  const inpNum = 'w-full bg-black border border-green-900/60 rounded px-3 py-2 text-sm text-green-300 placeholder-green-900 focus:outline-none focus:border-green-500/60 transition-all font-mono'
 
   return (
-    <main className="min-h-screen">
-      <div className="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
-        <div className="absolute -top-20 right-0 w-[500px] h-[500px] rounded-full bg-emerald-600/15 blur-[130px]" />
-        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-blue-600/10 blur-[120px]" />
+    <main className="min-h-screen relative z-10">
+      {/* Top status bar */}
+      <div className="border-b border-green-900/40 bg-black/80 backdrop-blur-sm py-1 px-4 flex items-center justify-between text-[10px] font-mono">
+        <div className="flex items-center gap-4">
+          <span className="text-green-500">WEALTHPILOT TERMINAL v2.1</span>
+          <span className="text-green-900">|</span>
+          <span className="text-green-700">NYSE · NASDAQ · LIVE FEED</span>
+        </div>
+        <div className="flex items-center gap-4 text-green-700">
+          <span>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+          <span className="text-green-500 blink">{time || '00:00:00'}</span>
+          {triggeredAlerts.length > 0 && (
+            <span className="text-amber-400 animate-pulse">⚡ {triggeredAlerts.length} ALERT{triggeredAlerts.length > 1 ? 'S' : ''}</span>
+          )}
+        </div>
       </div>
 
-      <nav className="border-b border-white/5 backdrop-blur-xl bg-white/[0.02] sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-blue-500 flex items-center justify-center font-bold text-sm">W</div>
-            <span className="font-semibold text-lg tracking-tight">WealthPilot</span>
+      {/* Nav */}
+      <nav className="border-b border-green-900/40 bg-black/60 backdrop-blur-xl px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="text-green-400 font-mono font-black text-lg tracking-widest">▶ WEALTHPILOT</div>
+          <div className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded border border-green-900/50 bg-green-950/30">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-[10px] text-green-600 font-mono">LIVE</span>
           </div>
-          <div className="flex items-center gap-3">
-            {triggeredAlerts.length > 0 && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-semibold animate-pulse">
-                🔔 {triggeredAlerts.length} alert{triggeredAlerts.length > 1 ? 's' : ''} triggered
-              </div>
-            )}
-            <span className="text-xs text-emerald-400/70 hidden sm:block">● Live market data</span>
-            <button className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-sm font-medium transition-all">
-              Get started free
-            </button>
-          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs font-mono text-green-700">
+          <span>[ YAHOO FINANCE API ]</span>
+          <span className="hidden sm:inline">[ CLAUDE AI ]</span>
+          <button className="px-3 py-1.5 border border-green-500/40 text-green-400 hover:bg-green-950/50 transition-all rounded">
+            CONNECT →
+          </button>
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-6 pt-10 pb-24">
-        <div className="mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-medium mb-4">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Real-time prices · AI insights · Price alerts · Portfolio history
+      <div className="max-w-7xl mx-auto px-4 pt-6 pb-16">
+        {/* Hero header */}
+        <div className="mb-6 border border-green-900/40 rounded bg-black/40 px-5 py-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-[10px] text-green-700 font-mono mb-1">// PORTFOLIO ANALYSIS SYSTEM</div>
+              <h1 className="text-2xl md:text-3xl font-black font-mono tracking-tight text-green-400">
+                REAL-TIME <span className="text-white">PORTFOLIO</span> INTELLIGENCE
+              </h1>
+              <p className="text-xs text-green-800 mt-1 font-mono">Live prices · AI risk analysis · Price alerts · Allocation tracking</p>
+            </div>
+            {result && (
+              <div className="text-right hidden md:block">
+                <div className="text-[10px] text-green-700 font-mono">TOTAL VALUE</div>
+                <div className="text-2xl font-black font-mono text-green-400">${result.total_value.toLocaleString()}</div>
+                <div className={`text-sm font-mono font-bold ${result.total_gain_loss_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {result.total_gain_loss_pct >= 0 ? '▲' : '▼'} {Math.abs(result.total_gain_loss_pct).toFixed(2)}%
+                </div>
+              </div>
+            )}
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-2">
-            Your portfolio,{' '}
-            <span className="bg-gradient-to-r from-emerald-400 to-blue-400 bg-clip-text text-transparent">analyzed by AI</span>
-          </h1>
-          <p className="text-white/50 max-w-2xl">Live prices from Yahoo Finance · AI risk analysis · Set price alerts · Track value over time</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           {/* Input panel */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-6">
-              <h2 className="font-semibold text-base mb-1">Holdings</h2>
-              <p className="text-xs text-white/40 mb-4">Ticker · Shares · Avg buy price</p>
-
-              <div className="space-y-2 mb-3">
-                <div className="grid grid-cols-3 gap-2 px-1">
-                  {['Ticker', 'Shares', 'Buy $'].map(l => (
-                    <span key={l} className="text-[10px] text-white/25 uppercase tracking-wider">{l}</span>
+          <div className="lg:col-span-2 space-y-3">
+            {/* Holdings input */}
+            <div className="border border-green-900/40 rounded bg-black/60">
+              <div className="border-b border-green-900/30 px-4 py-2 flex items-center justify-between">
+                <span className="text-[11px] font-mono text-green-600 uppercase tracking-wider">► HOLDINGS INPUT</span>
+                <span className="text-[10px] text-green-900 font-mono">{holdings.filter(h => h.ticker).length} positions</span>
+              </div>
+              <div className="p-4 space-y-2">
+                <div className="grid grid-cols-3 gap-2 px-1 pb-1">
+                  {['TICKER', 'SHARES', 'BUY $'].map(l => (
+                    <span key={l} className="text-[9px] text-green-900 uppercase tracking-widest font-mono">{l}</span>
                   ))}
                 </div>
                 {holdings.map((h, i) => (
-                  <div key={i} className="grid grid-cols-3 gap-2 group relative">
-                    <input value={h.ticker} onChange={e => updateRow(i, 'ticker', e.target.value.toUpperCase())} placeholder="AAPL" className={input + ' uppercase font-mono'} />
-                    <input value={h.shares} onChange={e => updateRow(i, 'shares', e.target.value)} placeholder="10" type="number" className={input} />
+                  <div key={i} className="grid grid-cols-3 gap-2">
+                    <input value={h.ticker} onChange={e => updateRow(i, 'ticker', e.target.value.toUpperCase())}
+                      placeholder="AAPL" className={inp} />
+                    <input value={h.shares} onChange={e => updateRow(i, 'shares', e.target.value)}
+                      placeholder="10" type="number" className={inpNum} />
                     <div className="relative">
-                      <input value={h.buyPrice} onChange={e => updateRow(i, 'buyPrice', e.target.value)} placeholder="150" type="number" className={input + ' pr-7'} />
+                      <input value={h.buyPrice} onChange={e => updateRow(i, 'buyPrice', e.target.value)}
+                        placeholder="150" type="number" className={inpNum + ' pr-6'} />
                       {holdings.length > 1 && (
-                        <button onClick={() => removeRow(i)} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/20 hover:text-red-400 transition-colors text-xs">✕</button>
+                        <button onClick={() => removeRow(i)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-green-900 hover:text-red-500 transition-colors text-xs">✕</button>
                       )}
                     </div>
                   </div>
                 ))}
+                <button onClick={addRow}
+                  className="w-full py-1.5 border border-dashed border-green-900/50 text-[10px] text-green-800 hover:text-green-600 hover:border-green-700/50 font-mono transition-all mt-1">
+                  + ADD_POSITION()
+                </button>
               </div>
-
-              <button onClick={addRow} className="w-full py-2 rounded-xl border border-dashed border-white/10 hover:border-white/20 text-xs text-white/30 hover:text-white/60 transition-all mb-4">
-                + Add holding
-              </button>
-
-              <div className="mb-4">
-                <label className="text-[10px] text-white/30 uppercase tracking-wider mb-1.5 block">Ask AI anything about your portfolio</label>
-                <input value={question} onChange={e => setQuestion(e.target.value)} placeholder="Should I rebalance? Am I overexposed to tech?" className={input} />
-              </div>
-
-              <button onClick={analyze} disabled={loading}
-                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 font-semibold text-sm transition-all disabled:opacity-40 flex items-center justify-center gap-2">
-                {loading ? (
-                  <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Fetching live prices...</>
-                ) : 'Analyze portfolio ✦'}
-              </button>
             </div>
 
-            {/* Price Alerts */}
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-6">
-              <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">🔔 Price Alerts</h3>
-              <div className="flex gap-2 mb-3">
-                <input value={alertTicker} onChange={e => setAlertTicker(e.target.value.toUpperCase())} placeholder="AAPL" className="w-20 bg-white/[0.04] border border-white/10 rounded-lg px-2.5 py-2 text-xs text-white uppercase placeholder-white/25 focus:outline-none focus:border-amber-500/50 transition-all font-mono" />
-                <select value={alertDir} onChange={e => setAlertDir(e.target.value as 'above' | 'below')} className="bg-white/[0.04] border border-white/10 rounded-lg px-2 py-2 text-xs text-white/70 focus:outline-none flex-shrink-0">
-                  <option value="above">Above</option>
-                  <option value="below">Below</option>
-                </select>
-                <input value={alertPrice} onChange={e => setAlertPrice(e.target.value)} placeholder="200" type="number" className="flex-1 bg-white/[0.04] border border-white/10 rounded-lg px-2.5 py-2 text-xs text-white placeholder-white/25 focus:outline-none focus:border-amber-500/50 transition-all" />
-                <button onClick={addAlert} className="px-3 py-2 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-medium hover:bg-amber-500/30 transition-all">Set</button>
+            {/* AI Query */}
+            <div className="border border-green-900/40 rounded bg-black/60 p-4">
+              <div className="text-[9px] text-green-800 font-mono uppercase tracking-widest mb-2">► AI QUERY (OPTIONAL)</div>
+              <input value={question} onChange={e => setQuestion(e.target.value)}
+                placeholder="Should I rebalance? Overexposed to tech?"
+                className="w-full bg-black border border-green-900/50 rounded px-3 py-2 text-xs text-green-300 placeholder-green-900 focus:outline-none focus:border-green-500/60 transition-all font-mono" />
+            </div>
+
+            {/* Run button */}
+            <button onClick={analyze} disabled={loading}
+              className="w-full py-3.5 border border-green-500/50 bg-green-950/40 hover:bg-green-950/80 text-green-400 hover:text-green-300 font-mono font-bold text-sm transition-all rounded flex items-center justify-center gap-2 tracking-widest disabled:opacity-40 terminal-glow">
+              {loading ? (
+                <><span className="blink">█</span> FETCHING LIVE DATA...</>
+              ) : '► RUN ANALYSIS()'}
+            </button>
+
+            {/* Alerts panel */}
+            <div className="border border-green-900/40 rounded bg-black/60">
+              <div className="border-b border-green-900/30 px-4 py-2">
+                <span className="text-[11px] font-mono text-green-600 uppercase tracking-wider">► PRICE ALERTS</span>
               </div>
-              {alerts.length > 0 ? (
-                <div className="space-y-1.5">
-                  {alerts.map((a, i) => (
-                    <div key={i} className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs ${a.triggered ? 'bg-amber-500/15 border border-amber-500/30' : 'bg-white/[0.02] border border-white/5'}`}>
-                      <span className={`font-mono font-semibold ${a.triggered ? 'text-amber-300' : 'text-white/70'}`}>{a.ticker}</span>
-                      <span className="text-white/40">{a.direction === 'above' ? '↑' : '↓'} ${a.targetPrice}</span>
-                      {a.triggered && <span className="text-amber-400 font-semibold">🔔 Hit!</span>}
-                      <button onClick={() => { const n = alerts.filter((_, j) => j !== i); setAlerts(n); localStorage.setItem('wealthpilot-alerts', JSON.stringify(n)) }} className="text-white/20 hover:text-red-400 transition-colors">✕</button>
-                    </div>
-                  ))}
+              <div className="p-4 space-y-3">
+                <div className="flex gap-2">
+                  <input value={alertTicker} onChange={e => setAlertTicker(e.target.value.toUpperCase())}
+                    placeholder="AAPL" className="w-16 bg-black border border-green-900/60 rounded px-2 py-1.5 text-xs text-green-300 placeholder-green-900 focus:outline-none focus:border-green-500/60 font-mono uppercase" />
+                  <select value={alertDir} onChange={e => setAlertDir(e.target.value as 'above' | 'below')}
+                    className="bg-black border border-green-900/60 rounded px-2 py-1.5 text-xs text-green-600 focus:outline-none font-mono">
+                    <option value="above">↑ ABOVE</option>
+                    <option value="below">↓ BELOW</option>
+                  </select>
+                  <input value={alertPrice} onChange={e => setAlertPrice(e.target.value)}
+                    placeholder="200" type="number"
+                    className="flex-1 bg-black border border-green-900/60 rounded px-2 py-1.5 text-xs text-green-300 placeholder-green-900 focus:outline-none focus:border-green-500/60 font-mono" />
+                  <button onClick={addAlert}
+                    className="px-2.5 py-1.5 border border-amber-600/40 bg-amber-950/30 text-amber-500 text-xs font-mono hover:bg-amber-950/60 transition-all rounded">SET</button>
                 </div>
-              ) : (
-                <p className="text-xs text-white/25 text-center py-2">No alerts set — add one above</p>
-              )}
+                {alerts.length > 0 ? (
+                  <div className="space-y-1">
+                    {alerts.map((a, i) => (
+                      <div key={i} className={`flex items-center justify-between px-2.5 py-1.5 rounded border text-[11px] font-mono ${a.triggered ? 'border-amber-600/40 bg-amber-950/20 text-amber-400' : 'border-green-900/30 text-green-700'}`}>
+                        <span className="font-bold">{a.ticker}</span>
+                        <span>{a.direction === 'above' ? '↑' : '↓'} ${a.targetPrice}</span>
+                        {a.triggered && <span className="text-amber-400">⚡ HIT</span>}
+                        <button onClick={() => { const n = alerts.filter((_, j) => j !== i); setAlerts(n); localStorage.setItem('wealthpilot-alerts', JSON.stringify(n)) }}
+                          className="text-green-900 hover:text-red-500 transition-colors">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-green-900 font-mono text-center py-1">NO ALERTS SET</p>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Results */}
-          <div className="lg:col-span-3 space-y-4">
+          {/* Results panel */}
+          <div className="lg:col-span-3 space-y-3">
             {result ? (
               <>
-                {/* Summary cards */}
-                <div className="grid grid-cols-3 gap-3">
+                {/* Stats row */}
+                <div className="grid grid-cols-3 gap-2">
                   {[
-                    { label: 'Portfolio Value', value: `$${result.total_value.toLocaleString()}`, sub: `+$${(result.total_value - result.total_cost).toLocaleString()} P&L`, color: 'text-white' },
-                    { label: 'Total Invested', value: `$${result.total_cost.toLocaleString()}`, sub: `${result.holdings.filter(h => !h.error).length} positions`, color: 'text-white/70' },
-                    { label: 'Total Return', value: `${result.total_gain_loss_pct >= 0 ? '+' : ''}${result.total_gain_loss_pct.toFixed(2)}%`, sub: result.total_gain_loss_pct >= 0 ? '📈 Profitable' : '📉 In loss', color: result.total_gain_loss_pct >= 0 ? 'text-emerald-400' : 'text-red-400' },
+                    { label: 'PORTFOLIO VALUE', value: `$${result.total_value.toLocaleString()}`, sub: `P&L: $${(result.total_value - result.total_cost) >= 0 ? '+' : ''}${(result.total_value - result.total_cost).toLocaleString()}`, up: true },
+                    { label: 'TOTAL INVESTED', value: `$${result.total_cost.toLocaleString()}`, sub: `${result.holdings.filter(h => !h.error).length} POSITIONS`, up: null },
+                    { label: 'RETURN', value: `${result.total_gain_loss_pct >= 0 ? '+' : ''}${result.total_gain_loss_pct.toFixed(2)}%`, sub: result.total_gain_loss_pct >= 0 ? 'PROFITABLE ▲' : 'IN LOSS ▼', up: result.total_gain_loss_pct >= 0 },
                   ].map(s => (
-                    <div key={s.label} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                      <div className="text-[10px] text-white/35 mb-1">{s.label}</div>
-                      <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-                      <div className="text-[10px] text-white/30 mt-0.5">{s.sub}</div>
+                    <div key={s.label} className="border border-green-900/40 rounded bg-black/60 px-3 py-3">
+                      <div className="text-[9px] text-green-800 font-mono uppercase tracking-widest mb-1">{s.label}</div>
+                      <div className={`text-lg font-black font-mono ${s.up === null ? 'text-green-300' : s.up ? 'text-green-400' : 'text-red-400'}`}>{s.value}</div>
+                      <div className={`text-[9px] font-mono mt-0.5 ${s.up === null ? 'text-green-800' : s.up ? 'text-green-700' : 'text-red-800'}`}>{s.sub}</div>
                     </div>
                   ))}
                 </div>
 
-                {/* Tab bar */}
-                <div className="flex gap-1 rounded-xl border border-white/10 bg-white/[0.02] p-1">
+                {/* Allocation bar */}
+                <div className="border border-green-900/40 rounded bg-black/60 px-4 py-3">
+                  <div className="text-[9px] text-green-800 font-mono mb-2">ALLOCATION DISTRIBUTION</div>
+                  <AllocationBar holdings={result.holdings} total={result.total_value} />
+                  <div className="flex flex-wrap gap-3 mt-2">
+                    {result.holdings.filter(h => !h.error).map(h => (
+                      <div key={h.ticker} className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-sm" style={{ background: COLORS[h.ticker] ?? COLORS.default }} />
+                        <span className="text-[9px] font-mono text-green-700">{h.ticker} {(h.current_value / result.total_value * 100).toFixed(0)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex gap-0 border border-green-900/40 rounded overflow-hidden font-mono text-[11px]">
                   {[
-                    { id: 'holdings', label: '📊 Holdings' },
-                    { id: 'chart', label: '📈 Chart' },
-                    { id: 'news', label: '📰 AI Insights' },
-                    { id: 'alerts', label: `🔔 Alerts${triggeredAlerts.length > 0 ? ` (${triggeredAlerts.length})` : ''}` },
-                  ].map(t => (
+                    { id: 'holdings', label: '[ POSITIONS ]' },
+                    { id: 'allocation', label: '[ HISTORY ]' },
+                    { id: 'insights', label: '[ AI ANALYSIS ]' },
+                    { id: 'alerts', label: `[ ALERTS${triggeredAlerts.length > 0 ? ` ⚡${triggeredAlerts.length}` : ''} ]` },
+                  ].map((t, i) => (
                     <button key={t.id} onClick={() => setTab(t.id as typeof tab)}
-                      className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${tab === t.id ? 'bg-white/[0.08] text-white' : 'text-white/40 hover:text-white/70'}`}>
+                      className={`flex-1 py-2 transition-all border-r border-green-900/40 last:border-0 tracking-wider ${tab === t.id ? 'bg-green-950/60 text-green-400' : 'text-green-800 hover:text-green-600 hover:bg-green-950/20'}`}>
                       {t.label}
                     </button>
                   ))}
                 </div>
 
-                {/* Holdings tab */}
+                {/* Holdings table */}
                 {tab === 'holdings' && (
-                  <div className="rounded-2xl border border-white/10 overflow-hidden">
-                    <div className="grid grid-cols-5 px-5 py-2.5 border-b border-white/5 text-[10px] text-white/30 uppercase tracking-wider">
-                      <span className="col-span-2">Ticker</span><span className="text-right">Price</span><span className="text-right">Value</span><span className="text-right">Return</span>
+                  <div className="border border-green-900/40 rounded overflow-hidden bg-black/40">
+                    <div className="grid grid-cols-12 px-4 py-2 border-b border-green-900/30 text-[9px] text-green-800 font-mono uppercase tracking-widest">
+                      <span className="col-span-3">TICKER</span>
+                      <span className="col-span-2 text-right">CUR PRICE</span>
+                      <span className="col-span-2 text-right">VALUE</span>
+                      <span className="col-span-2 text-right">RETURN</span>
+                      <span className="col-span-3 text-right">ALLOC</span>
                     </div>
                     {result.holdings.filter(h => !h.error).map(h => {
+                      const alloc = (h.current_value / result.total_value * 100).toFixed(1)
                       const color = COLORS[h.ticker] ?? COLORS.default
-                      const alloc = (h.current_value / result.total_value * 100).toFixed(0)
                       return (
-                        <div key={h.ticker} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
-                          <div className="grid grid-cols-5 px-5 py-3.5 items-center">
-                            <div className="col-span-2 flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black text-white" style={{ background: color }}>
-                                {h.ticker.slice(0, 2)}
-                              </div>
-                              <div>
-                                <div className="font-semibold text-sm">{h.ticker}</div>
-                                <div className="text-[10px] text-white/30">{alloc}% of portfolio</div>
-                              </div>
+                        <div key={h.ticker} className="border-b border-green-900/20 last:border-0 hover:bg-green-950/10 transition-colors">
+                          <div className="grid grid-cols-12 px-4 py-3 items-center">
+                            <div className="col-span-3 flex items-center gap-2">
+                              <div className="w-1 h-6 rounded-full" style={{ background: color }} />
+                              <span className="font-mono font-bold text-sm" style={{ color }}>{h.ticker}</span>
                             </div>
-                            <span className="text-right text-sm text-white/60">${h.current_price.toFixed(2)}</span>
-                            <span className="text-right text-sm font-medium">${h.current_value.toLocaleString()}</span>
-                            <span className={`text-right text-sm font-bold ${h.gain_loss_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <span className="col-span-2 text-right text-xs font-mono text-green-500">${h.current_price.toFixed(2)}</span>
+                            <span className="col-span-2 text-right text-xs font-mono text-white">${h.current_value.toLocaleString()}</span>
+                            <span className={`col-span-2 text-right text-xs font-mono font-bold ${h.gain_loss_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                               {h.gain_loss_pct >= 0 ? '+' : ''}{h.gain_loss_pct.toFixed(2)}%
                             </span>
-                          </div>
-                          {/* Allocation bar */}
-                          <div className="px-5 pb-2">
-                            <div className="h-0.5 rounded-full bg-white/5 overflow-hidden">
-                              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${alloc}%`, background: color }} />
+                            <div className="col-span-3 flex items-center justify-end gap-2">
+                              <div className="flex-1 h-1 bg-green-950 rounded overflow-hidden max-w-12">
+                                <div className="h-full rounded transition-all" style={{ width: `${alloc}%`, background: color }} />
+                              </div>
+                              <span className="text-[10px] font-mono text-green-800">{alloc}%</span>
                             </div>
                           </div>
                         </div>
@@ -333,76 +352,81 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Chart tab */}
-                {tab === 'chart' && (
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 space-y-6">
-                    <div>
-                      <h3 className="font-semibold mb-4">Portfolio value history</h3>
-                      {history.length >= 2 ? (
-                        <div>
-                          <MiniChart history={history} />
-                          <div className="flex justify-between text-[10px] text-white/30 mt-2">
-                            <span>{history[0]?.date}</span>
-                            <span>{history[history.length - 1]?.date}</span>
-                          </div>
+                {/* History tab */}
+                {tab === 'allocation' && (
+                  <div className="border border-green-900/40 rounded bg-black/60 p-4">
+                    <div className="text-[9px] text-green-800 font-mono mb-3">PORTFOLIO VALUE HISTORY (30 DAY)</div>
+                    {history.length >= 2 ? (
+                      <>
+                        <MiniSparkline history={history} />
+                        <div className="mt-3 space-y-1">
+                          {history.slice(-5).reverse().map((h, i) => (
+                            <div key={i} className="flex justify-between text-[10px] font-mono border-b border-green-900/20 pb-1">
+                              <span className="text-green-800">{h.date}</span>
+                              <span className="text-green-500">${h.value.toLocaleString()}</span>
+                              <span className={`${h.value >= h.cost ? 'text-green-700' : 'text-red-800'}`}>
+                                {h.value >= h.cost ? '+' : ''}{((h.value - h.cost) / h.cost * 100).toFixed(2)}%
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ) : (
-                        <p className="text-sm text-white/30">Analyze your portfolio multiple times to build history. Each analysis saves a data point.</p>
-                      )}
-                    </div>
-                    <div>
-                      <h3 className="font-semibold mb-4">Allocation breakdown</h3>
-                      <PieChart holdings={result.holdings} />
-                    </div>
+                      </>
+                    ) : (
+                      <p className="text-xs text-green-900 font-mono">RUN ANALYSIS MULTIPLE TIMES TO BUILD HISTORY LOG</p>
+                    )}
                   </div>
                 )}
 
-                {/* AI Insights tab */}
-                {tab === 'news' && result.insights && (
-                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className="w-7 h-7 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-sm">✦</div>
-                      <h3 className="font-semibold">AI Portfolio Analysis</h3>
-                    </div>
-                    <p className="text-sm text-white/70 leading-relaxed whitespace-pre-wrap">{result.insights}</p>
+                {/* AI insights tab */}
+                {tab === 'insights' && (
+                  <div className="border border-green-500/20 rounded bg-black/60 p-4">
+                    {result.insights ? (
+                      <>
+                        <div className="text-[9px] text-green-600 font-mono mb-3 flex items-center gap-2">
+                          <span className="blink">█</span> CLAUDE AI PORTFOLIO ANALYSIS OUTPUT
+                        </div>
+                        <p className="text-xs text-green-400 font-mono leading-relaxed whitespace-pre-wrap">{result.insights}</p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-green-900 font-mono">NO AI INSIGHTS — CHECK API KEY CONFIGURATION</p>
+                    )}
                   </div>
                 )}
 
                 {/* Alerts tab */}
                 {tab === 'alerts' && (
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-                    <h3 className="font-semibold mb-4">Price Alert Status</h3>
+                  <div className="border border-green-900/40 rounded bg-black/60 p-4">
+                    <div className="text-[9px] text-green-800 font-mono mb-3">ALERT STATUS LOG</div>
                     {alerts.length > 0 ? (
                       <div className="space-y-2">
                         {alerts.map((a, i) => {
                           const holding = result.holdings.find(h => h.ticker === a.ticker)
-                          const current = holding?.current_price
                           return (
-                            <div key={i} className={`rounded-xl p-4 border ${a.triggered ? 'bg-amber-500/10 border-amber-500/30' : 'bg-white/[0.03] border-white/10'}`}>
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <span className="font-mono font-bold">{a.ticker}</span>
-                                  <span className="text-white/40 text-sm ml-2">{a.direction === 'above' ? '↑ above' : '↓ below'} ${a.targetPrice}</span>
-                                </div>
-                                <div className="text-right">
-                                  {current && <div className="text-sm text-white/60">Current: ${current.toFixed(2)}</div>}
-                                  {a.triggered && <div className="text-amber-400 text-xs font-semibold mt-0.5">🔔 Alert triggered!</div>}
-                                </div>
-                              </div>
+                            <div key={i} className={`border rounded px-3 py-2 font-mono text-xs flex items-center justify-between ${a.triggered ? 'border-amber-600/40 bg-amber-950/20 text-amber-400' : 'border-green-900/30 text-green-700'}`}>
+                              <span className="font-bold">{a.ticker}</span>
+                              <span>{a.direction === 'above' ? '↑ ABOVE' : '↓ BELOW'} ${a.targetPrice}</span>
+                              {holding && <span>CUR: ${holding.current_price.toFixed(2)}</span>}
+                              <span>{a.triggered ? '⚡ TRIGGERED' : '○ WATCHING'}</span>
                             </div>
                           )
                         })}
                       </div>
                     ) : (
-                      <p className="text-sm text-white/30 text-center py-4">Set price alerts in the panel on the left</p>
+                      <p className="text-xs text-green-900 font-mono">NO ACTIVE ALERTS</p>
                     )}
                   </div>
                 )}
               </>
             ) : (
-              <div className="rounded-2xl border border-white/5 bg-white/[0.02] py-32 flex flex-col items-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center text-3xl">📈</div>
-                <p className="text-white/30 text-sm text-center max-w-xs">Add your holdings and analyze to see live performance, AI insights, and allocation charts</p>
+              <div className="border border-green-900/30 rounded bg-black/30 flex flex-col items-center justify-center py-24 gap-4">
+                <div className="font-mono text-green-900 text-xs space-y-1 text-center">
+                  <p className="text-green-600">WEALTHPILOT TERMINAL</p>
+                  <p>══════════════════════════════</p>
+                  <p>AWAITING INPUT...</p>
+                  <p>ADD HOLDINGS TO BEGIN ANALYSIS</p>
+                  <p>══════════════════════════════</p>
+                  <p className="text-[10px]">POWERED BY YAHOO FINANCE + CLAUDE AI</p>
+                </div>
               </div>
             )}
           </div>

@@ -1,7 +1,36 @@
 @import "tailwindcss";
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { background: #07080f; color: white; }
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+body { background: #04060a; color: #e2e8f0; font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; }
+
+/* Terminal scanline effect */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,100,0.015) 2px, rgba(0,255,100,0.015) 4px);
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Grid background */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: linear-gradient(rgba(0,255,100,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,100,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.terminal-glow { box-shadow: 0 0 20px rgba(0, 255, 100, 0.1), inset 0 0 20px rgba(0, 255, 100, 0.03); }
+.green { color: #00ff64; }
+.red-val { color: #ff4444; }
+.ticker { font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em; }
+.blink { animation: blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #04060a; }
+::-webkit-scrollbar-thumb { background: rgba(0,255,100,0.2); border-radius: 2px; }
