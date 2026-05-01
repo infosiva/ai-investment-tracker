@@ -1,5 +1,27 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+
+// Rate limit: 3 free analyses per day
+function useRateLimit(key: string, limit: number) {
+  const getUsage = useCallback(() => {
+    if (typeof window === 'undefined') return { count: 0, date: '' }
+    try { return JSON.parse(localStorage.getItem(key) || '{"count":0,"date":""}') } catch { return { count: 0, date: '' } }
+  }, [key])
+
+  const today = new Date().toISOString().split('T')[0]
+  const usage = getUsage()
+  const count = usage.date === today ? usage.count : 0
+  const remaining = Math.max(0, limit - count)
+
+  const increment = useCallback(() => {
+    const d = new Date().toISOString().split('T')[0]
+    const u = getUsage()
+    const c = u.date === d ? u.count + 1 : 1
+    localStorage.setItem(key, JSON.stringify({ count: c, date: d }))
+  }, [key, getUsage])
+
+  return { remaining, increment, isLimited: remaining === 0 }
+}
 
 interface Holding { ticker: string; shares: string; buyPrice: string }
 interface Result { ticker: string; shares: number; buy_price: number; current_price: number; current_value: number; gain_loss_pct: number; error?: string }
@@ -41,6 +63,7 @@ function AllocationBar({ holdings, total }: { holdings: Result[]; total: number 
 }
 
 export default function Home() {
+  const { remaining, increment, isLimited } = useRateLimit('wealthpilot-usage', 3)
   const [holdings, setHoldings] = useState<Holding[]>([{ ticker: '', shares: '', buyPrice: '' }])
   const [result, setResult] = useState<PortfolioResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -74,6 +97,8 @@ export default function Home() {
   async function analyze() {
     const valid = holdings.filter(h => h.ticker && h.shares && h.buyPrice)
     if (!valid.length) return
+    if (isLimited) return
+    increment()
     setLoading(true)
     try {
       const res = await fetch('/api/portfolio', {
@@ -142,11 +167,13 @@ export default function Home() {
           </div>
         </div>
         <div className="flex items-center gap-2 text-xs font-mono text-green-700">
-          <span>[ YAHOO FINANCE API ]</span>
-          <span className="hidden sm:inline">[ CLAUDE AI ]</span>
-          <button className="px-3 py-1.5 border border-green-500/40 text-green-400 hover:bg-green-950/50 transition-all rounded">
-            CONNECT →
-          </button>
+          <span className="hidden sm:inline">[ CLAUDE AI + YAHOO FINANCE ]</span>
+          {remaining < 3 && !isLimited && (
+            <span className="text-amber-600">[{remaining} FREE ANALYSES LEFT]</span>
+          )}
+          <a href="#pricing" className="px-3 py-1.5 border border-green-500/40 text-green-400 hover:bg-green-950/50 transition-all rounded">
+            UPGRADE →
+          </a>
         </div>
       </nav>
 
@@ -220,11 +247,15 @@ export default function Home() {
             </div>
 
             {/* Run button */}
-            <button onClick={analyze} disabled={loading}
-              className="w-full py-3.5 border border-green-500/50 bg-green-950/40 hover:bg-green-950/80 text-green-400 hover:text-green-300 font-mono font-bold text-sm transition-all rounded flex items-center justify-center gap-2 tracking-widest disabled:opacity-40 terminal-glow">
+            <button onClick={analyze} disabled={loading || isLimited}
+              className={`w-full py-3.5 border font-mono font-bold text-sm transition-all rounded flex items-center justify-center gap-2 tracking-widest disabled:opacity-40 terminal-glow ${isLimited ? 'border-amber-600/40 bg-amber-950/30 text-amber-500 cursor-not-allowed' : 'border-green-500/50 bg-green-950/40 hover:bg-green-950/80 text-green-400 hover:text-green-300'}`}>
               {loading ? (
                 <><span className="blink">█</span> FETCHING LIVE DATA...</>
-              ) : '► RUN ANALYSIS()'}
+              ) : isLimited ? (
+                '⚡ DAILY LIMIT REACHED — UPGRADE FOR UNLIMITED'
+              ) : (
+                <>► RUN ANALYSIS() <span className="text-green-800 text-[10px]">[{remaining} left today]</span></>
+              )}
             </button>
 
             {/* Alerts panel */}
@@ -432,6 +463,39 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Pricing */}
+      <section id="pricing" className="border-t border-green-900/30 mt-8 px-4 pb-16">
+        <div className="max-w-3xl mx-auto pt-12">
+          <div className="text-center mb-8">
+            <div className="text-[10px] text-green-700 font-mono mb-2">// PRICING MODULE</div>
+            <h2 className="text-2xl font-black font-mono text-green-400">WEALTHPILOT.PLANS[]</h2>
+            <p className="text-xs text-green-800 mt-2">Free forever for basics · Pro for serious investors</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-px border border-green-900/40 rounded overflow-hidden">
+            {[
+              { name: 'FREE', price: '$0', sub: 'forever', features: ['3 analyses / day', 'Live price data', 'AI portfolio insights', 'Price alerts (localStorage)', 'Portfolio history (30 days)', 'Allocation charts'], cta: 'Current plan', highlight: false },
+              { name: 'PRO', price: '$7', sub: '/ month', features: ['Unlimited analyses', 'Email price alerts', 'Export to CSV / PDF', 'Multi-portfolio support', 'AI rebalancing suggestions', 'Priority support'], cta: 'Upgrade to Pro →', highlight: true },
+            ].map(plan => (
+              <div key={plan.name} className={`p-8 ${plan.highlight ? 'bg-green-950/40' : 'bg-black/60'}`}>
+                <div className="text-[10px] font-mono text-green-700 mb-1">{plan.highlight ? '// RECOMMENDED' : '// STARTER'}</div>
+                <div className={`text-3xl font-black font-mono mb-0.5 ${plan.highlight ? 'text-green-400' : 'text-green-700'}`}>{plan.price}</div>
+                <div className="text-xs text-green-900 font-mono mb-6">{plan.sub}</div>
+                <ul className="space-y-2 mb-6">
+                  {plan.features.map(f => (
+                    <li key={f} className={`flex items-start gap-2 text-xs font-mono ${plan.highlight ? 'text-green-600' : 'text-green-900'}`}>
+                      <span className={plan.highlight ? 'text-green-500' : 'text-green-800'}>►</span> {f}
+                    </li>
+                  ))}
+                </ul>
+                <button className={`w-full py-2.5 rounded text-xs font-mono font-bold transition-all ${plan.highlight ? 'border border-green-500/50 text-green-400 hover:bg-green-950/80' : 'border border-green-900/50 text-green-900 cursor-default'}`}>
+                  {plan.cta}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
     </main>
   )
 }
