@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
+import { callAI } from '@/lib/ai'
 
 interface HoldingInput { ticker: string; shares: number; buy_price: number }
 
@@ -39,22 +39,21 @@ export async function POST(req: NextRequest) {
     const total_gain_loss_pct = total_cost > 0 ? Math.round(((total_value - total_cost) / total_cost) * 10000) / 100 : 0
 
     let insights = ''
-    if (process.env.ANTHROPIC_API_KEY && valid.length > 0) {
+    if (valid.length > 0) {
       try {
-        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
         const portfolioSummary = valid.map(h =>
           `${h.ticker}: ${h.shares} shares @ $${h.buy_price} buy → $${h.current_price} now (${h.gain_loss_pct >= 0 ? '+' : ''}${h.gain_loss_pct}%, value $${h.current_value})`
         ).join('\n')
-        const msg = await client.messages.create({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 800,
-          system: 'You are a financial analyst. Provide concise, actionable portfolio insights. Always include: this is not financial advice.',
-          messages: [{
+        const { text } = await callAI(
+          'You are a financial analyst. Provide concise, actionable portfolio insights. Always include: this is not financial advice.',
+          [{
             role: 'user',
             content: `Portfolio:\n${portfolioSummary}\n\nTotal value: $${total_value} | Total invested: $${total_cost} | Return: ${total_gain_loss_pct}%\n\n${question || 'Analyze this portfolio — diversification, risk, rebalancing suggestions.'}`,
           }],
-        })
-        insights = msg.content[0].type === 'text' ? msg.content[0].text : ''
+          800,
+          'balanced',
+        )
+        insights = text
       } catch { /* insights optional */ }
     }
 
