@@ -141,52 +141,95 @@ export default function Home() {
 
   return (
     <main className="min-h-screen relative z-10">
-      {/* Top status bar */}
-      <div className="border-b border-green-900/40 bg-black/80 backdrop-blur-sm py-1 px-4 flex items-center justify-between text-[10px] font-mono">
+      {/* Top status bar — AI Bloomberg Terminal */}
+      <div className="border-b border-green-900/40 bg-black py-1 px-4 flex items-center justify-between text-[10px] font-mono overflow-hidden">
         <div className="flex items-center gap-4">
-          <span className="text-green-500">WEALTHPILOT TERMINAL v2.1</span>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-green-400 font-bold">▶ NYSE OPEN</span>
+          </div>
           <span className="text-green-900">|</span>
-          <span className="text-green-700">NYSE · NASDAQ · LIVE FEED</span>
+          <span className="text-green-700">NASDAQ</span>
+          <span className="text-green-900">|</span>
+          <span className="text-green-800">16:42:03 UTC</span>
+        </div>
+        <div className="hidden sm:block">
+          <span className="text-green-600 font-bold tracking-widest">WEALTHPILOT v2</span>
         </div>
         <div className="flex items-center gap-4 text-green-700">
-          <span>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
-          <span className="text-green-500 blink">{time || '00:00:00'}</span>
           {triggeredAlerts.length > 0 && (
             <span className="text-amber-400 animate-pulse">⚡ {triggeredAlerts.length} ALERT{triggeredAlerts.length > 1 ? 'S' : ''}</span>
           )}
+          <a href="#pricing" className="text-green-400 font-bold border border-green-900/60 px-2 py-0.5 rounded hover:border-green-500/40 transition-all">
+            UPGRADE PRO
+          </a>
         </div>
       </div>
 
-      {/* Nav */}
-      <nav className="border-b border-green-900/40 bg-black/60 backdrop-blur-xl px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="text-green-400 font-mono font-black text-lg tracking-widest">▶ WEALTHPILOT</div>
-          <div className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded border border-green-900/50 bg-green-950/30">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-[10px] text-green-600 font-mono">LIVE</span>
+      {/* Nav — Terminal main nav */}
+      <nav className="border-b border-green-900/40 bg-black/80 backdrop-blur-xl px-6 py-2.5 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          {/* Logo */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded flex items-center justify-center font-mono font-black text-sm border border-green-500/40" style={{ background: 'rgba(0,255,100,0.08)', color: '#00ff64' }}>WP</div>
+            <div>
+              <div className="font-mono font-bold text-sm tracking-widest text-white">WEALTHPILOT</div>
+              <div className="text-[9px] font-mono text-white/30">AI Portfolio Intelligence</div>
+            </div>
+          </div>
+          {/* Nav links */}
+          <div className="hidden sm:flex items-center gap-1 ml-4">
+            {['HOLDINGS', 'ANALYSIS', 'ALERTS'].map(link => (
+              <a key={link} href="#how"
+                className="px-3 py-1.5 text-[11px] font-mono font-bold text-white/50 hover:text-green-400 transition-colors tracking-widest relative group">
+                {link}
+                <span className="absolute bottom-0 left-0 w-0 h-px bg-green-400 group-hover:w-full transition-all duration-200" />
+              </a>
+            ))}
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs font-mono text-green-700">
-          <span className="hidden sm:inline">[ CLAUDE AI + YAHOO FINANCE ]</span>
+        <div className="flex items-center gap-2 text-xs font-mono">
           {remaining < 3 && !isLimited && (
-            <span className="text-amber-600">[{remaining} FREE ANALYSES LEFT]</span>
+            <span className="text-amber-600">[{remaining} LEFT]</span>
           )}
-          <a href="#pricing" className="px-3 py-1.5 border border-green-500/40 text-green-400 hover:bg-green-950/50 transition-all rounded">
-            UPGRADE →
+          <a href="#pricing"
+            className="px-3 py-1.5 border border-green-500/50 text-green-400 font-mono text-xs font-bold hover:bg-green-950/60 transition-all rounded tracking-widest">
+            RUN ANALYSIS
           </a>
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-4 pt-6 pb-16">
+      <div className="max-w-7xl mx-auto px-4 pt-4 pb-16">
+        {/* Ticker tape */}
+        <div className="border border-green-900/40 rounded mb-4 overflow-hidden bg-black/60 py-1.5">
+          <div className="whitespace-nowrap font-mono text-[11px] text-green-600 animate-marquee">
+            <span className="inline-block px-8">
+              AAPL <span className="text-green-400">+1.2%</span> &nbsp;·&nbsp; MSFT <span className="text-green-400">+0.8%</span> &nbsp;·&nbsp; GOOGL <span className="text-red-400">-0.3%</span> &nbsp;·&nbsp; AMZN <span className="text-green-400">+2.1%</span> &nbsp;·&nbsp; TSLA <span className="text-red-400">-1.5%</span> &nbsp;·&nbsp; NVDA <span className="text-green-400">+3.4%</span> &nbsp;·&nbsp; META <span className="text-green-400">+0.6%</span> &nbsp;·&nbsp; JPM <span className="text-red-400">-0.2%</span> &nbsp;·&nbsp; NFLX <span className="text-green-400">+1.8%</span> &nbsp;·&nbsp; AAPL <span className="text-green-400">+1.2%</span> &nbsp;·&nbsp; MSFT <span className="text-green-400">+0.8%</span> &nbsp;·&nbsp; GOOGL <span className="text-red-400">-0.3%</span> &nbsp;·&nbsp; AMZN <span className="text-green-400">+2.1%</span> &nbsp;·&nbsp; TSLA <span className="text-red-400">-1.5%</span> &nbsp;·&nbsp;
+            </span>
+          </div>
+        </div>
+
         {/* Hero header */}
-        <div className="mb-6 border border-green-900/40 rounded bg-black/40 px-5 py-4">
+        <div className="mb-6 border border-green-900/40 rounded bg-black/40 px-5 py-5">
           <div className="flex items-start justify-between">
             <div>
-              <div className="text-[10px] text-green-700 font-mono mb-1">// PORTFOLIO ANALYSIS SYSTEM</div>
-              <h1 className="text-2xl md:text-3xl font-black font-mono tracking-tight text-green-400">
-                REAL-TIME <span className="text-white">PORTFOLIO</span> INTELLIGENCE
+              <div className="text-[10px] text-green-700 font-mono mb-2">// PORTFOLIO ANALYSIS SYSTEM v2.1</div>
+              <h1 className="text-4xl md:text-5xl font-black font-mono tracking-tight leading-none mb-3" style={{ background: 'linear-gradient(135deg, #00ff64, #00d4aa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                PORTFOLIO<br />INTELLIGENCE
               </h1>
-              <p className="text-xs text-green-800 mt-1 font-mono">Live prices · AI risk analysis · Price alerts · Allocation tracking</p>
+              {/* Status row */}
+              <div className="flex flex-wrap gap-2 mt-3">
+                {[
+                  { label: 'LIVE PRICES', color: '#00ff64', bg: 'rgba(0,255,100,0.08)', border: 'rgba(0,255,100,0.25)' },
+                  { label: 'AI ANALYSIS', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.25)' },
+                  { label: 'SMART ALERTS', color: '#60a5fa', bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.25)' },
+                ].map(s => (
+                  <div key={s.label} className="px-3 py-1.5 rounded font-mono text-[11px] font-bold tracking-widest"
+                    style={{ color: s.color, background: s.bg, border: `1px solid ${s.border}` }}>
+                    ● {s.label}
+                  </div>
+                ))}
+              </div>
             </div>
             {result && (
               <div className="text-right hidden md:block">

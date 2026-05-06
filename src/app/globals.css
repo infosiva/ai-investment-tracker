@@ -34,3 +34,7 @@ body::after {
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: #04060a; }
 ::-webkit-scrollbar-thumb { background: rgba(0,255,100,0.2); border-radius: 2px; }
+
+/* Ticker tape marquee */
+@keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+.animate-marquee { animation: marquee 30s linear infinite; display: inline-block; }
