@@ -141,6 +141,12 @@ export default function Home() {
 
   return (
     <main className="min-h-screen relative z-10">
+      {/* Noise overlay */}
+      <div className="noise-overlay" aria-hidden="true" />
+      {/* Ambient orbs */}
+      <div className="orb orb-1" style={{ background: 'radial-gradient(circle, rgba(0,255,100,0.10), transparent 70%)', top: '-100px', left: '-50px' }} aria-hidden="true" />
+      <div className="orb orb-2" style={{ background: 'radial-gradient(circle, rgba(0,212,170,0.08), transparent 70%)', animationDelay: '-8s' }} aria-hidden="true" />
+
       {/* Top status bar — AI Bloomberg Terminal */}
       <div className="border-b border-green-900/40 bg-black py-1 px-4 flex items-center justify-between text-[10px] font-mono overflow-hidden">
         <div className="flex items-center gap-4">
