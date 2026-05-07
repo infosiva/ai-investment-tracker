@@ -1,40 +1,72 @@
 @import "tailwindcss";
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { background: #04060a; color: #e2e8f0; font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; }
 
-/* Terminal scanline effect */
+:root {
+  --base-bg: #07060f;
+  --surface-1: #0f0e1a;
+  --surface-2: #16152a;
+  --border: #2a2740;
+  --text-primary: #f0eeff;
+  --text-secondary: #a09db8;
+  --text-muted: #6b6884;
+  --accent-h: 38; --accent-s: 92%; --accent-l: 50%;
+  --accent: hsl(var(--accent-h) var(--accent-s) var(--accent-l));
+  --accent-subtle: hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.12);
+  --accent-glow: hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.35);
+  --glass-bg: rgb(7 6 15 / 0.75);
+  --glass-border: rgb(255 255 255 / 0.06);
+  --glass-border-hover: rgb(255 255 255 / 0.12);
+  --radius: 0.75rem;
+}
+
+html { scroll-behavior: smooth }
+
+body {
+  background: var(--base-bg);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
 body::before {
   content: '';
-  position: fixed;
-  inset: 0;
-  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,100,0.015) 2px, rgba(0,255,100,0.015) 4px);
-  pointer-events: none;
-  z-index: 9999;
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 50% at 15% 10%, hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.09) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 85% 80%, hsl(var(--accent-h) var(--accent-s) calc(var(--accent-l) + 20%) / 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 50% at 50% 50%, rgb(99 102 241 / 0.04) 0%, transparent 70%);
 }
 
-/* Grid background */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image: linear-gradient(rgba(0,255,100,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,100,0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-  pointer-events: none;
-  z-index: 0;
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  transition: border-color 0.2s ease;
+}
+.glass:hover { border-color: var(--glass-border-hover); }
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-8px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes spin { to { transform: rotate(360deg) } }
+@keyframes ping { 75%, 100% { transform: scale(2); opacity: 0 } }
+@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .5 } }
+
+.animate-fadeUp { animation: fadeUp 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards }
+.animate-fadeIn { animation: fadeIn 0.4s ease forwards }
+.animate-spin { animation: spin 1s linear infinite }
+.animate-ping { animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite }
+.animate-pulse { animation: pulse 2s ease-in-out infinite }
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--text-primary) 30%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.terminal-glow { box-shadow: 0 0 20px rgba(0, 255, 100, 0.1), inset 0 0 20px rgba(0, 255, 100, 0.03); }
-.green { color: #00ff64; }
-.red-val { color: #ff4444; }
-.ticker { font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em; }
-.blink { animation: blink 1s step-end infinite; }
-@keyframes blink { 50% { opacity: 0; } }
-
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: #04060a; }
-::-webkit-scrollbar-thumb { background: rgba(0,255,100,0.2); border-radius: 2px; }
-
-/* Ticker tape marquee */
-@keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-.animate-marquee { animation: marquee 30s linear infinite; display: inline-block; }
+.delay-100 { animation-delay: 100ms }
+.delay-200 { animation-delay: 200ms }
+.delay-300 { animation-delay: 300ms }
