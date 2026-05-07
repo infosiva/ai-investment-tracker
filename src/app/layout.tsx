@@ -4,7 +4,7 @@ import SharedNavbar from '@/components/SharedNavbar'
 import SharedFooter from '@/components/SharedFooter'
 import type { BrandConfig } from '@/components/SharedNavbar'
 
-export const brand: BrandConfig = {
+const brand: BrandConfig = {
   name: 'WealthPilot',
   tagline: 'AI-powered investment portfolio tracker with real-time insights and alerts.',
   icon: '📈',
