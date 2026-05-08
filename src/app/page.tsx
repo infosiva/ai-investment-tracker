@@ -1,27 +1,7 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
-
-// Rate limit: 3 free analyses per day
-function useRateLimit(key: string, limit: number) {
-  const getUsage = useCallback(() => {
-    if (typeof window === 'undefined') return { count: 0, date: '' }
-    try { return JSON.parse(localStorage.getItem(key) || '{"count":0,"date":""}') } catch { return { count: 0, date: '' } }
-  }, [key])
-
-  const today = new Date().toISOString().split('T')[0]
-  const usage = getUsage()
-  const count = usage.date === today ? usage.count : 0
-  const remaining = Math.max(0, limit - count)
-
-  const increment = useCallback(() => {
-    const d = new Date().toISOString().split('T')[0]
-    const u = getUsage()
-    const c = u.date === d ? u.count + 1 : 1
-    localStorage.setItem(key, JSON.stringify({ count: c, date: d }))
-  }, [key, getUsage])
-
-  return { remaining, increment, isLimited: remaining === 0 }
-}
+import { useState, useEffect } from 'react'
+import { useGate } from '@/lib/shared/useGate'
+import RegisterGate from '@/lib/shared/RegisterGate'
 
 interface Holding { ticker: string; shares: string; buyPrice: string }
 interface Result { ticker: string; shares: number; buy_price: number; current_price: number; current_value: number; gain_loss_pct: number; error?: string }
@@ -63,7 +43,9 @@ function AllocationBar({ holdings, total }: { holdings: Result[]; total: number 
 }
 
 export default function Home() {
-  const { remaining, increment, isLimited } = useRateLimit('wealthpilot-usage', 3)
+  const { count: gateCount, showGate, increment: gateIncrement, onRegistered, dismissGate, isRegistered } = useGate('wealthpilot', 3)
+  const remaining = Math.max(0, 3 - gateCount)
+  const isLimited = !isRegistered && gateCount >= 3
   const [holdings, setHoldings] = useState<Holding[]>([{ ticker: '', shares: '', buyPrice: '' }])
   const [result, setResult] = useState<PortfolioResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -97,8 +79,8 @@ export default function Home() {
   async function analyze() {
     const valid = holdings.filter(h => h.ticker && h.shares && h.buyPrice)
     if (!valid.length) return
-    if (isLimited) return
-    increment()
+    const allowed = await gateIncrement()
+    if (!allowed) return
     setLoading(true)
     try {
       const res = await fetch('/api/portfolio', {
@@ -140,6 +122,7 @@ export default function Home() {
   const inpNum = 'w-full bg-[#030712] border border-emerald-900/60 rounded px-3 py-2 text-sm text-emerald-300 placeholder-emerald-900/60 focus:outline-none focus:border-emerald-500/60 transition-all font-mono'
 
   return (
+    <>
     <main className="min-h-screen bg-[#030712] relative z-10">
 
       {/* Compact sticky nav */}
@@ -529,5 +512,19 @@ export default function Home() {
         </div>
       </section>
     </main>
+
+    {showGate && (
+      <RegisterGate
+        freeUsed={gateCount}
+        freeLimit={3}
+        freeFeature="analyses"
+        lockedFeature="unlimited portfolio analyses"
+        accentColor="#10b981"
+        site="wealthpilot"
+        onSuccess={onRegistered}
+        onDismiss={dismissGate}
+      />
+    )}
+  </>
   )
 }
