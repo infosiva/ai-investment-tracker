@@ -709,3 +709,44 @@ body {
   overflow: hidden;
 }
 .section-liquid > * { position: relative; z-index: 1; }
+
+/* ── WealthPilot unique: ticker tape marquee ── */
+@keyframes marquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+.animate-marquee { display: inline-block; animation: marquee 28s linear infinite; white-space: nowrap; }
+
+/* ── WealthPilot unique: matrix scan-line ── */
+@keyframes scanline {
+  0% { transform: translateY(-100%) }
+  100% { transform: translateY(100vh) }
+}
+.scanline {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(16,185,129,0.15), transparent);
+  animation: scanline 6s linear infinite;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── WealthPilot unique: data grid bg ── */
+.finance-grid {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(16,185,129,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16,185,129,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── WealthPilot: glowing number animation ── */
+@keyframes numGlow {
+  0%, 100% { text-shadow: 0 0 8px rgba(16,185,129,0.4) }
+  50% { text-shadow: 0 0 20px rgba(16,185,129,0.9), 0 0 40px rgba(16,185,129,0.4) }
+}
+.num-glow { animation: numGlow 2.5s ease-in-out infinite; }
+
+/* ── Blink cursor ── */
+.blink { animation: blink 1s step-end infinite; }

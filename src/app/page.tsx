@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useGate } from '@/lib/shared/useGate'
 import RegisterGate from '@/lib/shared/RegisterGate'
 
@@ -45,7 +45,9 @@ function AllocationBar({ holdings, total }: { holdings: Result[]; total: number 
 export default function Home() {
   const { count: gateCount, showGate, increment: gateIncrement, onRegistered, dismissGate, isRegistered } = useGate('wealthpilot', 3)
   const remaining = Math.max(0, 3 - gateCount)
-  const isLimited = !isRegistered && gateCount >= 3
+  const [isPro, setIsPro] = useState(false)
+  const isLimited = !isRegistered && !isPro && gateCount >= 3
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [holdings, setHoldings] = useState<Holding[]>([{ ticker: '', shares: '', buyPrice: '' }])
   const [result, setResult] = useState<PortfolioResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -64,11 +66,34 @@ export default function Home() {
       if (saved) setHistory(JSON.parse(saved))
       const savedAlerts = localStorage.getItem('wealthpilot-alerts')
       if (savedAlerts) setAlerts(JSON.parse(savedAlerts))
+      if (localStorage.getItem('wealthpilot-pro') === '1') setIsPro(true)
     } catch { /* ignore */ }
+    // Handle Stripe success redirect
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('upgraded') === '1') {
+      localStorage.setItem('wealthpilot-pro', '1')
+      setIsPro(true)
+      window.history.replaceState({}, '', '/')
+    }
     const tick = () => setTime(new Date().toLocaleTimeString('en-US', { hour12: false }))
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
+  }, [])
+
+  const handleUpgrade = useCallback(async () => {
+    setCheckoutLoading(true)
+    try {
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: '' }),
+      })
+      const data = await res.json()
+      if (data.url) window.location.href = data.url
+    } catch { /* ignore */ } finally {
+      setCheckoutLoading(false)
+    }
   }, [])
 
   const addRow = () => setHoldings(h => [...h, { ticker: '', shares: '', buyPrice: '' }])
@@ -123,10 +148,14 @@ export default function Home() {
 
   return (
     <>
+    {/* Finance scan-line effect */}
+    <div className="scanline" aria-hidden="true" />
+    {/* Data grid background */}
+    <div className="finance-grid" aria-hidden="true" />
     <main className="min-h-screen bg-[#030712] relative z-10">
 
       {/* Compact sticky nav */}
-      <nav className="sticky top-0 z-50 bg-[#030712] border-b border-emerald-900/30 h-12 flex items-center justify-between px-6">
+      <nav className="sticky top-0 z-50 bg-[#030712]/95 backdrop-blur border-b border-emerald-900/30 h-12 flex items-center justify-between px-6">
         <div className="flex items-center gap-3">
           <span className="font-mono font-black text-base tracking-widest text-white">WealthPilot</span>
           <div className="flex items-center gap-1.5 ml-1">
@@ -140,10 +169,14 @@ export default function Home() {
             <span className="text-[11px] font-mono text-amber-400 animate-pulse">⚡ {triggeredAlerts.length} ALERT{triggeredAlerts.length > 1 ? 'S' : ''}</span>
           )}
           {time && <span className="text-[10px] font-mono text-emerald-800 hidden sm:block">{time}</span>}
-          <a href="#pricing"
-            className="px-3 py-1 bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 font-mono text-[11px] font-bold hover:bg-emerald-900/60 transition-all rounded tracking-widest">
-            Connect Portfolio
-          </a>
+          {isPro ? (
+            <span className="px-3 py-1 bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 font-mono text-[11px] font-bold rounded tracking-widest">⚡ PRO</span>
+          ) : (
+            <button onClick={handleUpgrade} disabled={checkoutLoading}
+              className="px-3 py-1 bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 font-mono text-[11px] font-bold hover:bg-emerald-900/60 transition-all rounded tracking-widest disabled:opacity-50">
+              {checkoutLoading ? '...' : 'Upgrade Pro →'}
+            </button>
+          )}
         </div>
       </nav>
 
@@ -155,30 +188,52 @@ export default function Home() {
         <div className="liquid-blob liquid-blob-2" style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.08), transparent 70%)', animationDelay: '-8s' }} aria-hidden="true" />
 
         <div className="max-w-7xl mx-auto relative z-10">
-          <div className="text-[10px] font-mono text-emerald-800 mb-4 tracking-widest">// PORTFOLIO ANALYSIS SYSTEM v2.1</div>
-          <h1 className="text-4xl md:text-5xl font-black font-mono tracking-tight leading-none mb-4">
-            Track wealth.<br />
-            <span className="text-iridescent">Outsmart the market.</span>
-          </h1>
-          <p className="text-sm text-emerald-700 font-mono mb-8 max-w-lg">
-            AI-powered portfolio intelligence. Real-time insights. Risk-adjusted returns.
-          </p>
-
-          {/* Live metrics row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
-            {[
-              { label: 'S&P 500', value: '+1.24%', arrow: '↑', positive: true },
-              { label: 'NASDAQ', value: '-0.31%', arrow: '↓', positive: false },
-              { label: 'BTC', value: '+3.41%', arrow: '↑', positive: null },
-              { label: 'Gold', value: '+0.18%', arrow: '↑', positive: true },
-            ].map(m => (
-              <div key={m.label} className="glass-liquid rounded-xl p-4">
-                <div className="text-[9px] font-mono text-emerald-800 tracking-widest mb-1">{m.label}</div>
-                <div className={`font-mono text-2xl font-bold ${m.positive === null ? 'text-amber-400' : m.positive ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {m.value} {m.arrow}
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
+            <div className="max-w-2xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-emerald-500/30 bg-emerald-950/40 mb-5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[10px] font-mono text-emerald-400 tracking-widest">LIVE MARKET DATA · AI-POWERED · FREE TO START</span>
+              </div>
+              <h1 className="text-4xl md:text-6xl font-black font-mono tracking-tight leading-none mb-5">
+                Your portfolio.<br />
+                <span className="text-iridescent">Institutional-grade</span><br />
+                <span className="text-emerald-600">intelligence.</span>
+              </h1>
+              <p className="text-sm text-emerald-600/80 font-mono mb-6 max-w-lg leading-relaxed">
+                Enter any stock portfolio → get live P&L, AI risk analysis, rebalancing advice, and price alerts in seconds. What hedge funds charge $10k/yr for, now $12/mo.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-950/40 border border-emerald-900/40 rounded-full">
+                  <span className="text-emerald-500 text-xs">✓</span>
+                  <span className="text-emerald-700 text-[11px] font-mono">No brokerage login needed</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-950/40 border border-emerald-900/40 rounded-full">
+                  <span className="text-emerald-500 text-xs">✓</span>
+                  <span className="text-emerald-700 text-[11px] font-mono">Yahoo Finance + Claude AI</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-950/40 border border-emerald-900/40 rounded-full">
+                  <span className="text-emerald-500 text-xs">✓</span>
+                  <span className="text-emerald-700 text-[11px] font-mono">3 free analyses daily</span>
                 </div>
               </div>
-            ))}
+            </div>
+
+            {/* Live metrics */}
+            <div className="grid grid-cols-2 gap-3 min-w-[260px]">
+              {[
+                { label: 'S&P 500', value: '+1.24%', arrow: '↑', positive: true },
+                { label: 'NASDAQ', value: '-0.31%', arrow: '↓', positive: false },
+                { label: 'BTC', value: '+3.41%', arrow: '↑', positive: null },
+                { label: 'Gold', value: '+0.18%', arrow: '↑', positive: true },
+              ].map(m => (
+                <div key={m.label} className="glass-liquid rounded-xl p-4">
+                  <div className="text-[9px] font-mono text-emerald-800 tracking-widest mb-1">{m.label}</div>
+                  <div className={`font-mono text-xl font-bold num-glow ${m.positive === null ? 'text-amber-400' : m.positive ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {m.value} {m.arrow}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -243,12 +298,12 @@ export default function Home() {
               </div>
 
               {/* Run button */}
-              <button onClick={analyze} disabled={loading || isLimited}
-                className={`w-full py-3.5 border font-mono font-bold text-sm transition-all rounded-xl flex items-center justify-center gap-2 tracking-widest disabled:opacity-40 ${isLimited ? 'border-amber-600/40 bg-amber-950/30 text-amber-500 cursor-not-allowed' : 'border-emerald-500/50 bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-400 hover:text-emerald-300'}`}>
+              <button onClick={isLimited ? handleUpgrade : analyze} disabled={loading}
+                className={`w-full py-3.5 border font-mono font-bold text-sm transition-all rounded-xl flex items-center justify-center gap-2 tracking-widest ${isLimited ? 'border-amber-600/40 bg-amber-950/30 text-amber-500 cursor-pointer hover:bg-amber-950/60' : 'border-emerald-500/50 bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-400 hover:text-emerald-300 disabled:opacity-40'}`}>
                 {loading ? (
                   <><span className="blink">█</span> FETCHING LIVE DATA...</>
                 ) : isLimited ? (
-                  '⚡ DAILY LIMIT REACHED — UPGRADE FOR UNLIMITED'
+                  '⚡ DAILY LIMIT REACHED — CLICK TO UPGRADE ($12/mo)'
                 ) : (
                   <>► RUN ANALYSIS() <span className="text-emerald-800 text-[10px]">[{remaining} left today]</span></>
                 )}
@@ -460,20 +515,29 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Feature panels */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-          {[
-            { icon: '📈', title: 'Portfolio P&L', desc: 'Live gain/loss across all positions. Color-coded deltas.' },
-            { icon: '🤖', title: 'AI Market Read', desc: 'Claude-powered analysis of your holdings and risk exposure.' },
-            { icon: '⚠️', title: 'Risk Score', desc: 'Concentration risk, sector exposure, volatility signals.' },
-            { icon: '🎯', title: 'Rebalance Tips', desc: 'AI-generated rebalancing suggestions to optimize returns.' },
-          ].map(panel => (
-            <div key={panel.title} className="glass-liquid rounded-xl p-5 reveal-3d">
-              <div className="text-xl mb-2">{panel.icon}</div>
-              <div className="text-xs font-mono font-bold text-emerald-400 mb-1 tracking-wide">{panel.title}</div>
-              <div className="text-[10px] font-mono text-emerald-800 leading-relaxed">{panel.desc}</div>
-            </div>
-          ))}
+        {/* Why Pro is worth it */}
+        <div className="mt-8 glass-liquid rounded-2xl p-6">
+          <div className="text-center mb-6">
+            <div className="text-[10px] font-mono text-emerald-700 tracking-widest mb-2">// WHY PRO PAYS FOR ITSELF</div>
+            <p className="text-emerald-500 font-mono text-sm">One better trade decision per month covers the cost 10×</p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { icon: '📈', title: 'Live P&L Tracking', desc: 'Real-time prices from Yahoo Finance. Know your portfolio value to the penny, always.', badge: 'FREE' },
+              { icon: '🤖', title: 'Claude AI Analysis', desc: 'Institutional-quality AI reads your portfolio, flags concentration risk, suggests moves.', badge: 'PRO' },
+              { icon: '⚠️', title: 'Unlimited Analyses', desc: 'Run as many portfolio checks as you want. No daily cap. Track every market move.', badge: 'PRO' },
+              { icon: '🎯', title: 'Rebalance Signals', desc: 'AI tells you exactly when and how to rebalance to protect gains and cut losses.', badge: 'PRO' },
+            ].map(panel => (
+              <div key={panel.title} className="glass-liquid rounded-xl p-5 reveal-3d border border-emerald-900/20">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="text-xl">{panel.icon}</div>
+                  <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded ${panel.badge === 'PRO' ? 'bg-emerald-950/60 text-emerald-500 border border-emerald-700/40' : 'bg-[#030712] text-emerald-900 border border-emerald-900/30'}`}>{panel.badge}</span>
+                </div>
+                <div className="text-xs font-mono font-bold text-emerald-400 mb-1.5 tracking-wide">{panel.title}</div>
+                <div className="text-[10px] font-mono text-emerald-800 leading-relaxed">{panel.desc}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -484,12 +548,13 @@ export default function Home() {
             <div className="text-[10px] text-emerald-700 font-mono mb-2">// PRICING MODULE</div>
             <h2 className="text-2xl font-black font-mono text-emerald-400">WEALTHPILOT.PLANS[]</h2>
             <p className="text-xs text-emerald-800 mt-2 font-mono">Free forever for basics · Pro for serious investors</p>
+            {isPro && <div className="mt-3 inline-block px-4 py-1.5 bg-emerald-950/60 border border-emerald-500/40 rounded font-mono text-xs text-emerald-400">⚡ PRO ACTIVE — UNLIMITED ANALYSES</div>}
           </div>
           <div className="glass-liquid rounded-xl overflow-hidden">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-px">
               {[
                 { name: 'FREE', price: '$0', sub: 'forever', features: ['3 analyses / day', 'Live price data', 'AI portfolio insights', 'Price alerts (localStorage)', 'Portfolio history (30 days)', 'Allocation charts'], cta: 'Current plan', highlight: false },
-                { name: 'PRO', price: '$7', sub: '/ month', features: ['Unlimited analyses', 'Email price alerts', 'Export to CSV / PDF', 'Multi-portfolio support', 'AI rebalancing suggestions', 'Priority support'], cta: 'Upgrade to Pro →', highlight: true },
+                { name: 'PRO', price: '$12', sub: '/ month', features: ['Unlimited analyses', 'Email price alerts', 'Export to CSV / PDF', 'Multi-portfolio support', 'AI rebalancing suggestions', 'Priority support'], cta: isPro ? '✓ You are on Pro' : (checkoutLoading ? 'Redirecting...' : 'Upgrade to Pro →'), highlight: true },
               ].map(plan => (
                 <div key={plan.name} className={`p-8 ${plan.highlight ? 'bg-emerald-950/40' : 'bg-[#030712]/60'}`}>
                   <div className="text-[10px] font-mono text-emerald-700 mb-1">{plan.highlight ? '// RECOMMENDED' : '// STARTER'}</div>
@@ -502,7 +567,10 @@ export default function Home() {
                       </li>
                     ))}
                   </ul>
-                  <button className={`w-full py-2.5 rounded text-xs font-mono font-bold transition-all ${plan.highlight ? 'border border-emerald-500/50 text-emerald-400 hover:bg-emerald-950/80' : 'border border-emerald-900/50 text-emerald-900 cursor-default'}`}>
+                  <button
+                    onClick={plan.highlight && !isPro ? handleUpgrade : undefined}
+                    disabled={plan.highlight && (isPro || checkoutLoading)}
+                    className={`w-full py-2.5 rounded text-xs font-mono font-bold transition-all ${plan.highlight ? (isPro ? 'border border-emerald-500/50 text-emerald-500 cursor-default' : 'border border-emerald-400/60 bg-emerald-900/40 text-emerald-300 hover:bg-emerald-800/60 hover:text-emerald-200 cursor-pointer') : 'border border-emerald-900/50 text-emerald-900 cursor-default'}`}>
                     {plan.cta}
                   </button>
                 </div>
