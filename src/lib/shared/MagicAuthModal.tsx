@@ -102,7 +102,7 @@ export default function MagicAuthModal({
           {step === 'done' ? (
             <div style={{ textAlign: 'center', padding: '16px 0' }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
-              <p style={{ fontSize: 20, fontWeight: 800, color: '#111', marginBottom: 6 }}>You're in!</p>
+              <p style={{ fontSize: 20, fontWeight: 800, color: '#111', marginBottom: 6 }}>You&apos;re in!</p>
               <p style={{ fontSize: 14, color: '#777' }}>Signed in as <strong>{email}</strong></p>
             </div>
           ) : (

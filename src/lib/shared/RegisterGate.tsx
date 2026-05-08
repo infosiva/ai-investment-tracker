@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import MagicAuthModal from '../auth/MagicAuthModal'
-import type { AuthUser } from '../auth/useMagicAuth'
+import MagicAuthModal from './MagicAuthModal'
+import type { AuthUser } from './useMagicAuth'
 
 export interface GateFeature {
   icon: string
