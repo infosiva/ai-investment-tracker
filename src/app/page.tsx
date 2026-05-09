@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useGate } from '@/lib/shared/useGate'
 import RegisterGate from '@/lib/shared/RegisterGate'
+import { PortfolioChart, MetricCard } from '@/components/tremor'
+import type { PortfolioDataPoint } from '@/components/tremor'
 
 interface Holding { ticker: string; shares: string; buyPrice: string }
 interface Result { ticker: string; shares: number; buy_price: number; current_price: number; current_value: number; gain_loss_pct: number; error?: string }
@@ -146,6 +148,19 @@ export default function Home() {
   const inp = 'w-full bg-[#030712] border border-emerald-900/60 rounded px-3 py-2 text-sm text-emerald-300 placeholder-emerald-900/60 focus:outline-none focus:border-emerald-500/60 transition-all font-mono uppercase'
   const inpNum = 'w-full bg-[#030712] border border-emerald-900/60 rounded px-3 py-2 text-sm text-emerald-300 placeholder-emerald-900/60 focus:outline-none focus:border-emerald-500/60 transition-all font-mono'
 
+  const PORTFOLIO_DATA: PortfolioDataPoint[] = [
+    { date: 'Jan', value: 10000, gain: 0 },
+    { date: 'Feb', value: 10800, gain: 800 },
+    { date: 'Mar', value: 10400, gain: 400 },
+    { date: 'Apr', value: 11200, gain: 1200 },
+    { date: 'May', value: 12100, gain: 2100 },
+  ]
+  const METRICS = [
+    { title: 'Portfolio Value', value: '$12,100', delta: '+21%', deltaType: 'increase' as const },
+    { title: "Today's Gain", value: '+$340', delta: '+2.9%', deltaType: 'moderateIncrease' as const },
+    { title: 'Assets Tracked', value: '8', deltaType: 'unchanged' as const },
+  ]
+
   return (
     <>
     {/* Finance scan-line effect */}
@@ -247,8 +262,18 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Tremor metrics + portfolio chart */}
+      <div className="max-w-7xl mx-auto px-4 pt-6">
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {METRICS.map(m => <MetricCard key={m.title} title={m.title} value={m.value} delta={m.delta} deltaType={m.deltaType} />)}
+        </div>
+        <div className="mb-6">
+          <PortfolioChart data={PORTFOLIO_DATA} />
+        </div>
+      </div>
+
       {/* Main app area */}
-      <div className="max-w-7xl mx-auto px-4 pt-6 pb-16">
+      <div className="max-w-7xl mx-auto px-4 pt-0 pb-16">
         <div className="glass-liquid rounded-xl p-6">
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
