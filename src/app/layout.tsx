@@ -4,6 +4,7 @@ import SharedNavbar from '@/components/SharedNavbar'
 import SharedFooter from '@/components/SharedFooter'
 import DesignEffects from '@/components/DesignEffects'
 import AnimatedBackground from '@/components/AnimatedBackground'
+import ChatBot from '@/components/ChatBot'
 import type { BrandConfig } from '@/components/SharedNavbar'
 
 const brand: BrandConfig = {
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <SharedNavbar brand={brand} />
         <main className="flex-1 pt-16">{children}</main>
         <SharedFooter brand={brand} />
+        <ChatBot />
       </body>
     </html>
   )
