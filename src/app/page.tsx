@@ -4,6 +4,12 @@ import { useGate } from '@/lib/shared/useGate'
 import RegisterGate from '@/lib/shared/RegisterGate'
 import { PortfolioChart, MetricCard } from '@/components/tremor'
 import type { PortfolioDataPoint } from '@/components/tremor'
+import GuidedTour, { type TourStep } from '@/components/GuidedTour'
+
+const WEALTHPILOT_TOUR: TourStep[] = [
+  { target: '#portfolio-form', title: 'Track your portfolio', icon: '📊', body: 'Add your holdings — live prices from Yahoo Finance show your real-time P&L instantly.', placement: 'bottom' },
+  { target: '#pricing', title: 'Unlock unlimited analyses', icon: '💹', body: 'Pro removes daily limits — run as many AI portfolio checks as you want.', placement: 'top' },
+]
 
 interface Holding { ticker: string; shares: string; buyPrice: string }
 interface Result { ticker: string; shares: number; buy_price: number; current_price: number; current_value: number; gain_loss_pct: number; error?: string }
@@ -273,7 +279,7 @@ export default function Home() {
       </div>
 
       {/* Main app area */}
-      <div className="max-w-7xl mx-auto px-4 pt-0 pb-16">
+      <div id="portfolio-form" className="max-w-7xl mx-auto px-4 pt-0 pb-16">
         <div className="glass-liquid rounded-xl p-6">
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
@@ -618,6 +624,7 @@ export default function Home() {
         onDismiss={dismissGate}
       />
     )}
+    <GuidedTour steps={WEALTHPILOT_TOUR} storageKey="wealthpilot_tour_v1" accentColor="#10b981" />
   </>
   )
 }
