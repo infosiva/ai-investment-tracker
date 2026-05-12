@@ -11,16 +11,23 @@ interface Props {
   position?: 'bottom-right' | 'bottom-left' | 'bottom-center'
 }
 
+interface SpeechRecognitionEvent extends Event {
+  results: SpeechRecognitionResultList
+}
+
 declare global {
   interface Window {
-    SpeechRecognition: typeof SpeechRecognition
-    webkitSpeechRecognition: typeof SpeechRecognition
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    SpeechRecognition: any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    webkitSpeechRecognition: any
   }
 }
 
 export default function VoiceButton({ onTranscript, lang = 'en-GB', color = '#f59e0b', position = 'bottom-right' }: Props) {
   const [state, setState] = useState<State>('idle')
-  const recRef = useRef<SpeechRecognition | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recRef = useRef<any>(null)
 
   const posClass = {
     'bottom-right': 'bottom-6 right-6',
@@ -43,14 +50,14 @@ export default function VoiceButton({ onTranscript, lang = 'en-GB', color = '#f5
     rec.interimResults = false
     rec.maxAlternatives = 1
     rec.onstart = () => setState('listening')
-    rec.onresult = (e) => {
+    rec.onresult = (e: SpeechRecognitionEvent) => {
       setState('processing')
       const text = e.results[0][0].transcript
       onTranscript(text)
       setTimeout(() => setState('idle'), 800)
     }
     rec.onerror = () => { setState('error'); setTimeout(() => setState('idle'), 1500) }
-    rec.onend = () => { if (state === 'listening') setState('idle') }
+    rec.onend = () => { setState(s => s === 'listening' ? 'idle' : s) }
     rec.start()
     recRef.current = rec
   }, [state, isSupported, lang, onTranscript])
