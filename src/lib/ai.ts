@@ -35,8 +35,6 @@
  *   NVIDIA_API_KEY, NVIDIA_API_KEY_1, ...    (free at build.nvidia.com)
  *   KIMI_API_KEY, KIMI_API_KEY_1, ...        (free at platform.moonshot.cn)
  */
-import config from '@/vertical.config'
-
 const _aiSystemPrompt = 'You are a helpful AI assistant.'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -335,7 +333,7 @@ export async function aiChat(
   maxTokens = 700,
   quality: Quality = 'balanced',
 ): Promise<string> {
-  const system = systemPrompt ?? (config as any).aiSystemPrompt ?? _aiSystemPrompt
+  const system = systemPrompt ?? _aiSystemPrompt
   const { text } = await callAI(system, messages, maxTokens, quality)
   return text
 }
