@@ -45,12 +45,17 @@ export async function POST(req: NextRequest) {
           `${h.ticker}: ${h.shares} shares @ $${h.buy_price} buy → $${h.current_price} now (${h.gain_loss_pct >= 0 ? '+' : ''}${h.gain_loss_pct}%, value $${h.current_value})`
         ).join('\n')
         const { text } = await callAI(
-          'You are a financial analyst. Provide concise, actionable portfolio insights. Always include: this is not financial advice.',
+          `You are a financial analyst providing portfolio insights. Be concise and actionable.
+Structure your response in 3 short sections:
+1. OVERVIEW (1-2 sentences on overall portfolio health and return)
+2. RISK FLAGS (bullet: top 1-2 concentration risks or sector exposures)
+3. ACTION (1 specific rebalancing or trade suggestion with rationale)
+End with: "Not financial advice."`,
           [{
             role: 'user',
-            content: `Portfolio:\n${portfolioSummary}\n\nTotal value: $${total_value} | Total invested: $${total_cost} | Return: ${total_gain_loss_pct}%\n\n${question || 'Analyze this portfolio — diversification, risk, rebalancing suggestions.'}`,
+            content: `Portfolio:\n${portfolioSummary}\n\nTotal value: $${total_value} | Total invested: $${total_cost} | Overall return: ${total_gain_loss_pct >= 0 ? '+' : ''}${total_gain_loss_pct}%\n\n${question || 'Analyze diversification, concentration risk, and give one specific rebalancing suggestion.'}`,
           }],
-          800,
+          900,
           'balanced',
         )
         insights = text

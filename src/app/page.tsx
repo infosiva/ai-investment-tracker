@@ -270,7 +270,7 @@ export default function Home() {
 
       {/* Tremor metrics + portfolio chart */}
       <div className="max-w-7xl mx-auto px-4 pt-6">
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           {METRICS.map(m => <MetricCard key={m.title} title={m.title} value={m.value} delta={m.delta} deltaType={m.deltaType} />)}
         </div>
         <div className="mb-6">
@@ -292,13 +292,13 @@ export default function Home() {
                   <span className="text-[10px] text-emerald-900 font-mono">{holdings.filter(h => h.ticker).length} positions</span>
                 </div>
                 <div className="p-4 space-y-2">
-                  <div className="grid grid-cols-3 gap-2 px-1 pb-1">
+                  <div className="hidden xs:grid grid-cols-3 gap-2 px-1 pb-1">
                     {['TICKER', 'SHARES', 'BUY $'].map(l => (
                       <span key={l} className="text-[9px] text-emerald-900 uppercase tracking-widest font-mono">{l}</span>
                     ))}
                   </div>
                   {holdings.map((h, i) => (
-                    <div key={i} className="grid grid-cols-3 gap-2">
+                    <div key={i} className="grid grid-cols-3 gap-1.5">
                       <input value={h.ticker} onChange={e => updateRow(i, 'ticker', e.target.value.toUpperCase())}
                         placeholder="AAPL" className={inp} />
                       <input value={h.shares} onChange={e => updateRow(i, 'shares', e.target.value)}
@@ -384,7 +384,7 @@ export default function Home() {
               {result ? (
                 <>
                   {/* Stats row */}
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {[
                       { label: 'PORTFOLIO VALUE', value: `$${result.total_value.toLocaleString()}`, sub: `P&L: $${(result.total_value - result.total_cost) >= 0 ? '+' : ''}${(result.total_value - result.total_cost).toLocaleString()}`, up: true },
                       { label: 'TOTAL INVESTED', value: `$${result.total_cost.toLocaleString()}`, sub: `${result.holdings.filter(h => !h.error).length} POSITIONS`, up: null },
@@ -531,15 +531,28 @@ export default function Home() {
                   )}
                 </>
               ) : (
-                <div className="glass-liquid rounded-xl flex flex-col items-center justify-center py-24 gap-4">
-                  <div className="font-mono text-emerald-900 text-xs space-y-1 text-center">
-                    <p className="text-emerald-600 font-bold">WEALTHPILOT TERMINAL</p>
-                    <p>══════════════════════════════</p>
-                    <p>AWAITING INPUT...</p>
-                    <p>ADD HOLDINGS TO BEGIN ANALYSIS</p>
-                    <p>══════════════════════════════</p>
-                    <p className="text-[10px]">POWERED BY YAHOO FINANCE + CLAUDE AI</p>
+                <div className="glass-liquid rounded-xl flex flex-col items-center justify-center py-16 px-6 gap-6">
+                  <div className="text-4xl">📊</div>
+                  <div className="text-center space-y-2 max-w-xs">
+                    <p className="text-emerald-400 font-mono font-bold text-sm">Your portfolio analysis will appear here</p>
+                    <p className="text-emerald-800 font-mono text-xs leading-relaxed">
+                      Add at least one stock ticker, share count, and buy price in the panel on the left — then hit Run Analysis.
+                    </p>
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-sm text-center">
+                    {[
+                      { step: '1', label: 'Enter ticker', hint: 'e.g. AAPL, NVDA, MSFT' },
+                      { step: '2', label: 'Add shares + buy price', hint: 'Your cost basis' },
+                      { step: '3', label: 'Run analysis', hint: 'Live price + AI insight' },
+                    ].map(s => (
+                      <div key={s.step} className="border border-emerald-900/30 rounded-lg px-3 py-3 bg-[#030712]/40">
+                        <div className="text-emerald-500 font-mono text-xs font-bold mb-1">STEP {s.step}</div>
+                        <div className="text-emerald-600 font-mono text-[11px] font-medium">{s.label}</div>
+                        <div className="text-emerald-900 font-mono text-[10px] mt-0.5">{s.hint}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-emerald-900 font-mono">POWERED BY YAHOO FINANCE + AI ANALYSIS</p>
                 </div>
               )}
             </div>
