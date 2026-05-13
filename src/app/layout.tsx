@@ -1,11 +1,12 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import SharedNavbar from '@/components/SharedNavbar'
-import SharedFooter from '@/components/SharedFooter'
+import Footer from '../../components/Footer'
 import DesignEffects from '@/components/DesignEffects'
 import AnimatedBackground from '@/components/AnimatedBackground'
 import ChatBot from '@/components/ChatBot'
 import type { BrandConfig } from '@/components/SharedNavbar'
+import CookieConsent from "../../components/CookieConsent";
 
 const brand: BrandConfig = {
   name: 'TrackWealth',
@@ -42,8 +43,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <DesignEffects />
         <SharedNavbar brand={brand} />
         <main className="flex-1 pt-16">{children}</main>
-        <SharedFooter brand={brand} />
+        <Footer siteName="TrackWealth" />
         <ChatBot />
+      <CookieConsent />
       </body>
     </html>
   )
