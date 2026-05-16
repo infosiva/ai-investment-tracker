@@ -1,3 +1,7 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 @import "tailwindcss";
 
 /* ─────────────────────────────────────────
@@ -750,3 +754,28 @@ body {
 
 /* ── Blink cursor ── */
 .blink { animation: blink 1s step-end infinite; }
+
+/* ── Mobile viewport overflow fix ── */
+html {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+body {
+  overflow-x: hidden;
+  max-width: 100%;
+  position: relative;
+}
+img, video, iframe, embed, object {
+  max-width: 100%;
+  height: auto;
+}
+pre {
+  overflow-x: auto;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+* { -webkit-tap-highlight-color: transparent; }
+@media (max-width: 768px) {
+  html, body { overflow-x: hidden !important; }
+}
