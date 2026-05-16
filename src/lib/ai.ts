@@ -1,112 +1,225 @@
 /**
  * lib/ai.ts — Universal AI client (canonical template)
  *
- * Fallback chain (free-first, paid last):
- *   1. Ollama    (local, 100% free) — gemma4 → qwen3.6 → llama3.2
- *   2. Groq      (cloud, free tier) — multi-key rotation
- *   3. Gemini    (cloud, free tier) — multi-key rotation
- *   4. Cerebras  (cloud, free tier)
- *   5. NVidia    (cloud, free tier) — NIM inference, Llama/Phi/Qwen/Mistral
- *   6. Kimi      (cloud, free tier) — Moonshot, best for long-context
- *   7. OpenAI    (paid, but $5 free credit on new accounts)
- *   8. Anthropic/Claude (paid, last resort)
+ * FULLY DYNAMIC — provider list, model tiers, and fallback ORDER
+ * are all driven by Edge Config. Add a new provider tomorrow with
+ * zero code changes: just update Edge Config JSON.
  *
- * You always get a response — at least one provider will work at any time.
+ * Default fallback chain (free-first, paid last):
+ *   1.  Ollama      local, 100% free
+ *   2.  Groq        free tier — fastest inference
+ *   3.  Gemini      free tier — Google
+ *   4.  Cerebras    free tier — fast
+ *   5.  Together    free tier — 25+ open models
+ *   6.  OpenRouter  aggregator — cheapest available, single key
+ *   7.  Mistral     free tier — la-plateforme
+ *   8.  NVidia NIM  free tier — Llama/Phi/Qwen
+ *   9.  Kimi        free tier — Moonshot, long-context king
+ *  10.  DeepSeek    ~free — $0.07/1M input tokens
+ *  11.  Perplexity  sonar models, free tier
+ *  12.  xAI Grok    free tier
+ *  13.  Cohere      free tier — Command-R
+ *  14.  OpenAI      paid, $5 credit on new accounts
+ *  15.  Anthropic   paid, last resort
  *
- * Ollama is skipped automatically on Vercel/production (no OLLAMA_HOST means
- * it won't be reachable — falls through to Groq instantly).
- * Set OLLAMA_HOST=http://localhost:11434 in local .env to enable.
+ * Edge Config keys:
+ *   fallback_order   — array of provider names (overrides default above)
+ *   <provider>_tiers — { fast, balanced, best } model arrays
+ *   disabled_providers — array of provider names to skip entirely
  *
- * Quality tiers:
- *   'fast'     → small/instant  — classification, short summaries
- *   'balanced' → mid-tier       — default; most tasks
- *   'best'     → largest avail  — complex reasoning, strategy
+ * Key naming: <PROVIDER>_API_KEY, <PROVIDER>_API_KEY_1 ... _10
+ * Special: OPENROUTER_API_KEY, XAI_API_KEY, DEEPSEEK_API_KEY,
+ *          TOGETHER_API_KEY, PERPLEXITY_API_KEY, COHERE_API_KEY
  *
  * Usage:
  *   import { callAI, aiChat, aiCached } from '@/lib/ai'
  *   const reply = await aiChat(messages)
  *   const plan  = await aiChat(messages, system, 2048, 'best')
- *
- * Capacity scaling (.env):
- *   OLLAMA_HOST=http://localhost:11434   (local dev — free, no limits)
- *   GROQ_API_KEY, GROQ_API_KEY_1, ...   (free at console.groq.com)
- *   GEMINI_API_KEY, GEMINI_API_KEY_1    (free at aistudio.google.com)
- *   CEREBRAS_API_KEY                    (free at cloud.cerebras.ai)
- *   NVIDIA_API_KEY, NVIDIA_API_KEY_1, ...    (free at build.nvidia.com)
- *   KIMI_API_KEY, KIMI_API_KEY_1, ...        (free at platform.moonshot.cn)
  */
-const _aiSystemPrompt = 'You are a helpful AI assistant.'
+
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type Quality = 'fast' | 'balanced' | 'best'
 type Msg = { role: 'user' | 'assistant'; content: string }
 export interface AIResponse { text: string; provider: string; model: string }
 
-// ── Ollama local model tiers ──────────────────────────────────────────────────
-// Order matters: best local model first, fallback to smaller ones
+// ── Default model tiers ───────────────────────────────────────────────────────
+// All overridable via Edge Config — these are just sensible defaults
+
+const DEFAULTS: Record<string, { tiers: Record<Quality, string[]>; baseUrl: string; keyEnv: string }> = {
+  groq: {
+    baseUrl: 'https://api.groq.com/openai/v1',
+    keyEnv: 'GROQ',
+    tiers: {
+      fast:     ['llama-3.1-8b-instant', 'gemma2-9b-it'],
+      balanced: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
+      best:     ['meta-llama/llama-4-scout-17b-16e-instruct', 'qwen/qwen3-32b', 'llama-3.3-70b-versatile'],
+    },
+  },
+  gemini: {
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    keyEnv: 'GEMINI',
+    tiers: {
+      fast:     ['gemini-2.0-flash-lite'],
+      balanced: ['gemini-2.0-flash', 'gemini-2.0-flash-lite'],
+      best:     ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
+    },
+  },
+  cerebras: {
+    baseUrl: 'https://api.cerebras.ai/v1',
+    keyEnv: 'CEREBRAS',
+    tiers: {
+      fast:     ['llama3.1-8b'],
+      balanced: ['gpt-oss-120b', 'llama3.1-8b'],
+      best:     ['qwen-3-235b-a22b-instruct-2507', 'gpt-oss-120b'],
+    },
+  },
+  together: {
+    baseUrl: 'https://api.together.xyz/v1',
+    keyEnv: 'TOGETHER',
+    tiers: {
+      fast:     ['meta-llama/Llama-3.2-3B-Instruct-Turbo'],
+      balanced: ['meta-llama/Llama-3.3-70B-Instruct-Turbo', 'Qwen/Qwen2.5-72B-Instruct-Turbo'],
+      best:     ['meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8', 'Qwen/Qwen2.5-72B-Instruct-Turbo'],
+    },
+  },
+  openrouter: {
+    baseUrl: 'https://openrouter.ai/api/v1',
+    keyEnv: 'OPENROUTER',
+    tiers: {
+      fast:     ['meta-llama/llama-3.2-3b-instruct:free', 'mistralai/mistral-7b-instruct:free'],
+      balanced: ['meta-llama/llama-3.3-70b-instruct:free', 'qwen/qwen-2.5-72b-instruct:free'],
+      best:     ['meta-llama/llama-4-scout:free', 'deepseek/deepseek-chat-v3-0324:free', 'google/gemma-3-27b-it:free'],
+    },
+  },
+  mistral: {
+    baseUrl: 'https://api.mistral.ai/v1',
+    keyEnv: 'MISTRAL',
+    tiers: {
+      fast:     ['mistral-small-latest'],
+      balanced: ['mistral-medium-latest', 'mistral-small-latest'],
+      best:     ['mistral-large-latest', 'mistral-medium-latest'],
+    },
+  },
+  nvidia: {
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    keyEnv: 'NVIDIA',
+    tiers: {
+      fast:     ['microsoft/phi-4-mini-instruct'],
+      balanced: ['qwen/qwen2.5-72b-instruct', 'nvidia/llama-3.3-nemotron-super-49b-v1'],
+      best:     ['meta/llama-3.1-405b-instruct', 'mistralai/mistral-large-2-instruct'],
+    },
+  },
+  kimi: {
+    baseUrl: 'https://api.moonshot.cn/v1',
+    keyEnv: 'KIMI',
+    tiers: {
+      fast:     ['moonshot-v1-8k'],
+      balanced: ['moonshot-v1-32k'],
+      best:     ['moonshot-v1-128k'],
+    },
+  },
+  deepseek: {
+    baseUrl: 'https://api.deepseek.com/v1',
+    keyEnv: 'DEEPSEEK',
+    tiers: {
+      fast:     ['deepseek-chat'],
+      balanced: ['deepseek-chat'],
+      best:     ['deepseek-reasoner', 'deepseek-chat'],
+    },
+  },
+  perplexity: {
+    baseUrl: 'https://api.perplexity.ai',
+    keyEnv: 'PERPLEXITY',
+    tiers: {
+      fast:     ['sonar'],
+      balanced: ['sonar-pro'],
+      best:     ['sonar-reasoning-pro', 'sonar-pro'],
+    },
+  },
+  xai: {
+    baseUrl: 'https://api.x.ai/v1',
+    keyEnv: 'XAI',
+    tiers: {
+      fast:     ['grok-3-mini-fast'],
+      balanced: ['grok-3-mini'],
+      best:     ['grok-3', 'grok-3-mini'],
+    },
+  },
+  cohere: {
+    baseUrl: 'https://api.cohere.com/compatibility/v1',
+    keyEnv: 'COHERE',
+    tiers: {
+      fast:     ['command-r'],
+      balanced: ['command-r-plus'],
+      best:     ['command-a-03-2025', 'command-r-plus'],
+    },
+  },
+  openai: {
+    baseUrl: 'https://api.openai.com/v1',
+    keyEnv: 'OPENAI',
+    tiers: {
+      fast:     ['gpt-4o-mini'],
+      balanced: ['gpt-4o-mini', 'gpt-4o'],
+      best:     ['gpt-4o', 'o4-mini'],
+    },
+  },
+}
+
+// Ollama local tiers (separate — no API key, no baseUrl via DEFAULTS)
 const OLLAMA_TIERS: Record<Quality, string[]> = {
-  fast:     ['gemma4:latest', 'llama3.2:latest'],
-  balanced: ['qwen3.6:latest', 'gemma4:latest', 'llama3.2:latest'],
-  best:     ['qwen3.6:latest', 'gemma4:latest', 'llama3.2:latest'],
+  fast:     ['gemma3:4b', 'llama3.2:latest'],
+  balanced: ['qwen3:8b', 'gemma3:12b', 'llama3.2:latest'],
+  best:     ['qwen3:14b', 'gemma3:27b', 'llama3.3:latest'],
 }
 
-// ── Cloud provider defaults ───────────────────────────────────────────────────
-const DEFAULT_GROQ_TIERS: Record<Quality, string[]> = {
-  fast:     ['llama-3.1-8b-instant'],
-  balanced: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
-  best:     ['meta-llama/llama-4-scout-17b-16e-instruct', 'qwen/qwen3-32b', 'llama-3.3-70b-versatile'],
-}
-
-const DEFAULT_GEMINI_TIERS: Record<Quality, string[]> = {
-  fast:     ['gemini-2.0-flash-lite'],
-  balanced: ['gemini-2.0-flash', 'gemini-2.0-flash-lite'],
-  best:     ['gemini-2.5-flash', 'gemini-2.0-flash'],
-}
-
-const DEFAULT_CEREBRAS_TIERS: Record<Quality, string[]> = {
-  fast:     ['llama3.1-8b'],
-  balanced: ['gpt-oss-120b', 'llama3.1-8b'],
-  best:     ['qwen-3-235b-a22b-instruct-2507', 'gpt-oss-120b'],
-}
-
-const DEFAULT_NVIDIA_TIERS: Record<Quality, string[]> = {
-  fast:     ['microsoft/phi-4-mini-instruct'],
-  balanced: ['qwen/qwen2.5-72b-instruct'],
-  best:     ['meta/llama-3.1-405b-instruct', 'mistralai/mistral-large-2-instruct'],
-}
-
-const DEFAULT_KIMI_TIERS: Record<Quality, string[]> = {
-  fast:     ['moonshot-v1-8k'],
-  balanced: ['moonshot-v1-32k'],
-  best:     ['moonshot-v1-128k'],
-}
-
-const DEFAULT_OPENAI_TIERS: Record<Quality, string[]> = {
-  fast:     ['gpt-4o-mini'],
-  balanced: ['gpt-4o-mini', 'gpt-4o'],
-  best:     ['gpt-4o', 'gpt-4o-mini'],
-}
-
-const DEFAULT_CLAUDE_TIERS: Record<Quality, string> = {
+// Anthropic (special — uses SDK not openai-compat)
+const CLAUDE_TIERS: Record<Quality, string> = {
   fast:     'claude-haiku-4-5-20251001',
   balanced: 'claude-haiku-4-5-20251001',
   best:     'claude-sonnet-4-6',
 }
 
-// ── Edge Config model router ──────────────────────────────────────────────────
-let _edgeConfig: {
+// Default provider order — overridable entirely via Edge Config `fallback_order`
+const DEFAULT_ORDER = [
+  'ollama',
+  'groq', 'gemini', 'cerebras', 'together',
+  'openrouter',
+  'mistral', 'nvidia', 'kimi', 'deepseek',
+  'perplexity', 'xai', 'cohere',
+  'openai', 'anthropic',
+]
+
+// ── Edge Config (hot-reloads every 5 min) ────────────────────────────────────
+interface EdgeCfg {
+  fallback_order?: string[]
+  disabled_providers?: string[]
   groq_tiers?: Record<Quality, string[]>
   gemini_tiers?: Record<Quality, string[]>
   cerebras_tiers?: Record<Quality, string[]>
+  together_tiers?: Record<Quality, string[]>
+  openrouter_tiers?: Record<Quality, string[]>
+  mistral_tiers?: Record<Quality, string[]>
   nvidia_tiers?: Record<Quality, string[]>
   kimi_tiers?: Record<Quality, string[]>
+  deepseek_tiers?: Record<Quality, string[]>
+  perplexity_tiers?: Record<Quality, string[]>
+  xai_tiers?: Record<Quality, string[]>
+  cohere_tiers?: Record<Quality, string[]>
+  openai_tiers?: Record<Quality, string[]>
   claude_tiers?: Record<Quality, string>
-} | null = null
+  // future providers — any key ending in _tiers auto-discovered
+  [key: string]: unknown
+}
 
-async function getEdgeConfig() {
-  if (_edgeConfig !== null) return _edgeConfig
+let _ecCache: EdgeCfg | null = null
+let _ecAt = 0
+const EC_TTL = 5 * 60 * 1000
+
+async function getEdgeConfig(): Promise<EdgeCfg> {
+  if (_ecCache && Date.now() - _ecAt < EC_TTL) return _ecCache
   const connStr = process.env.EDGE_CONFIG
-  if (!connStr) { _edgeConfig = {}; return _edgeConfig }
+  if (!connStr) { _ecCache = {}; _ecAt = Date.now(); return _ecCache }
   try {
     const url   = new URL(connStr)
     const ecId  = url.pathname.replace('/', '')
@@ -115,46 +228,34 @@ async function getEdgeConfig() {
       `https://api.vercel.com/v1/edge-config/${ecId}/items`,
       { headers: { Authorization: `Bearer ${token}` }, next: { revalidate: 300 } } as RequestInit,
     )
-    if (!res.ok) { _edgeConfig = {}; return _edgeConfig }
+    if (!res.ok) throw new Error(`EC ${res.status}`)
     const items: Array<{ key: string; value: unknown }> = await res.json()
-    const cfg: Record<string, unknown> = {}
-    for (const { key, value } of items) cfg[key] = value
-    _edgeConfig = cfg as unknown as typeof _edgeConfig
-    console.log('[AI] Loaded model tiers from Edge Config')
-  } catch {
-    _edgeConfig = {}
+    _ecCache = Object.fromEntries(items.map(({ key, value }) => [key, value])) as EdgeCfg
+    _ecAt = Date.now()
+    console.log('[AI] Edge Config loaded — providers:', _ecCache.fallback_order ?? 'default order')
+  } catch (e) {
+    console.warn('[AI] Edge Config fetch failed, using defaults:', e)
+    _ecCache = {}
+    _ecAt = Date.now()
   }
-  return _edgeConfig
+  return _ecCache
 }
 
-async function getTiers() {
-  const ec = await getEdgeConfig()
-  return {
-    groq:     (ec?.groq_tiers     ?? DEFAULT_GROQ_TIERS)     as Record<Quality, string[]>,
-    gemini:   (ec?.gemini_tiers   ?? DEFAULT_GEMINI_TIERS)   as Record<Quality, string[]>,
-    cerebras: (ec?.cerebras_tiers ?? DEFAULT_CEREBRAS_TIERS) as Record<Quality, string[]>,
-    nvidia:   (ec?.nvidia_tiers   ?? DEFAULT_NVIDIA_TIERS)   as Record<Quality, string[]>,
-    kimi:     (ec?.kimi_tiers     ?? DEFAULT_KIMI_TIERS)     as Record<Quality, string[]>,
-    openai:   DEFAULT_OPENAI_TIERS,
-    claude:   (ec?.claude_tiers   ?? DEFAULT_CLAUDE_TIERS)   as Record<Quality, string>,
-  }
-}
-
-// ── Key rotation helper ───────────────────────────────────────────────────────
-function getKeys(service: string): string[] {
+// ── Key rotation ──────────────────────────────────────────────────────────────
+function getKeys(envPrefix: string): string[] {
   const keys: string[] = []
-  const plain = process.env[`${service}_API_KEY`] || process.env[`${service}_TOKEN`]
-  if (plain) keys.push(plain)
+  const base = process.env[`${envPrefix}_API_KEY`] || process.env[`${envPrefix}_TOKEN`]
+  if (base) keys.push(base)
   for (let i = 1; i <= 10; i++) {
-    const k = process.env[`${service}_API_KEY_${i}`] || process.env[`${service}_TOKEN_${i}`]
-    if (k) keys.push(k)
-    else break
+    const k = process.env[`${envPrefix}_API_KEY_${i}`] || process.env[`${envPrefix}_TOKEN_${i}`]
+    if (!k) break
+    keys.push(k)
   }
   return [...new Set(keys)]
 }
 
 // ── Error classification ──────────────────────────────────────────────────────
-function isQuotaError(msg: string): boolean {
+function isSkippable(msg: string): boolean {
   const m = msg.toLowerCase()
   return (
     m.includes('exhausted') || m.includes('rate_limit') || m.includes('rate limit') ||
@@ -164,25 +265,24 @@ function isQuotaError(msg: string): boolean {
     m.includes('unauthorized') || m.includes('not configured') || m.includes('no keys') ||
     m.includes('model_not_active') || m.includes('model not found') ||
     m.includes('not supported') || m.includes('overloaded') ||
-    m.includes('service unavailable') || m.includes('529')
+    m.includes('service unavailable') || m.includes('529') ||
+    m.includes('timeout') || m.includes('econnrefused') || m.includes('enotfound')
   )
 }
 
-const TIMEOUT_MS = 30_000
+// ── Timeout wrapper ───────────────────────────────────────────────────────────
+const TIMEOUT_MS = 28_000
 
-function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(
-      () => reject(new Error(`${label} timed out after ${TIMEOUT_MS / 1000}s`)),
-      TIMEOUT_MS,
-    )
-    promise.then(v => { clearTimeout(t); resolve(v) }, e => { clearTimeout(t); reject(e) })
+function withTimeout<T>(p: Promise<T>, label: string): Promise<T> {
+  return new Promise((res, rej) => {
+    const t = setTimeout(() => rej(new Error(`${label} timed out`)), TIMEOUT_MS)
+    p.then(v => { clearTimeout(t); res(v) }, e => { clearTimeout(t); rej(e) })
   })
 }
 
-// ── OpenAI-compatible fetch (works for Ollama, Groq, Gemini, Cerebras) ────────
-async function callOpenAICompat(
-  baseUrl: string, providerName: string, key: string, model: string,
+// ── OpenAI-compatible fetch ───────────────────────────────────────────────────
+async function callOAICompat(
+  baseUrl: string, name: string, key: string, model: string,
   system: string, messages: Msg[], maxTokens: number,
 ): Promise<string> {
   const res = await fetch(`${baseUrl}/chat/completions`, {
@@ -190,6 +290,8 @@ async function callOpenAICompat(
     headers: {
       'Content-Type': 'application/json',
       ...(key ? { Authorization: `Bearer ${key}` } : {}),
+      // OpenRouter requires these for rate-limit tiers
+      ...(baseUrl.includes('openrouter') ? { 'HTTP-Referer': 'https://nammatamil.live', 'X-Title': 'NammaTamil' } : {}),
     },
     body: JSON.stringify({
       model,
@@ -199,153 +301,150 @@ async function callOpenAICompat(
   })
   if (!res.ok) {
     const e = await res.text()
-    throw new Error(`${providerName}/${model} ${res.status}: ${e.slice(0, 200)}`)
+    throw new Error(`${name}/${model} ${res.status}: ${e.slice(0, 200)}`)
   }
-  const data = await res.json() as any
-  return data.choices?.[0]?.message?.content || ''
+  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
+  return data.choices?.[0]?.message?.content ?? ''
 }
 
-// ── Ollama caller — local only, skipped if OLLAMA_HOST not set ────────────────
-async function callOllama(
-  quality: Quality, system: string, messages: Msg[], maxTokens: number,
-): Promise<{ text: string; model: string }> {
+// ── Ollama ────────────────────────────────────────────────────────────────────
+async function callOllama(q: Quality, system: string, msgs: Msg[], max: number) {
   const host = process.env.OLLAMA_HOST
-  if (!host) throw new Error('OLLAMA_HOST not configured')
-
-  const models = OLLAMA_TIERS[quality]
-  for (const model of models) {
+  if (!host) throw new Error('OLLAMA_HOST not set')
+  for (const model of OLLAMA_TIERS[q]) {
     try {
-      // Check model is actually available before trying
-      const text = await withTimeout(
-        callOpenAICompat(`${host}/v1`, 'Ollama', '', model, system, messages, maxTokens),
-        `Ollama/${model}`,
-      )
-      if (text) {
-        console.log(`[AI] Ollama/${model} responded`)
-        return { text, model }
-      }
-    } catch (e: any) {
-      const msg = (e.message || '').slice(0, 100)
-      console.warn(`[AI] Ollama/${model} skip: ${msg}`)
-      continue
-    }
+      const text = await withTimeout(callOAICompat(`${host}/v1`, 'Ollama', '', model, system, msgs, max), `Ollama/${model}`)
+      if (text) { console.log(`[AI] Ollama/${model}`); return { text, model } }
+    } catch (e: any) { console.warn(`[AI] Ollama/${model}: ${e.message?.slice(0, 60)}`); continue }
   }
-  throw new Error('All Ollama models failed or unavailable')
+  throw new Error('Ollama: no model responded')
 }
 
-// ── Cloud provider caller (with key rotation) ─────────────────────────────────
-async function callProvider(
-  baseUrl: string, providerName: string, service: string,
-  models: string[], system: string, messages: Msg[], maxTokens: number,
+// ── Generic OpenAI-compat provider ───────────────────────────────────────────
+async function callGeneric(
+  providerId: string, q: Quality,
+  system: string, msgs: Msg[], max: number,
+  ec: EdgeCfg,
 ): Promise<{ text: string; model: string }> {
-  const keys = getKeys(service)
-  if (keys.length === 0) throw new Error(`${service} not configured`)
+  const def = DEFAULTS[providerId]
+  if (!def) throw new Error(`Unknown provider: ${providerId}`)
+
+  // Model list: Edge Config overrides default
+  const ecTiers = ec[`${providerId}_tiers`] as Record<Quality, string[]> | undefined
+  const models = ecTiers?.[q] ?? def.tiers[q]
+
+  const keys = getKeys(def.keyEnv)
+  if (!keys.length) throw new Error(`${providerId}: no API key`)
 
   for (const model of models) {
     for (const key of keys) {
       try {
-        const text = await withTimeout(
-          callOpenAICompat(baseUrl, providerName, key, model, system, messages, maxTokens),
-          `${providerName}/${model}`,
-        )
+        const text = await withTimeout(callOAICompat(def.baseUrl, providerId, key, model, system, msgs, max), `${providerId}/${model}`)
         if (text) return { text, model }
       } catch (e: any) {
-        const msg = (e.message || '').slice(0, 150)
-        if (isQuotaError(msg)) {
-          console.warn(`[AI] ${providerName}/${model} quota/skip: ${msg.slice(0, 80)}`)
-          continue
-        }
+        if (isSkippable(e.message ?? '')) { console.warn(`[AI] ${providerId}/${model} skip: ${e.message?.slice(0, 80)}`); continue }
         throw e
       }
     }
   }
-  throw new Error(`All ${providerName} models/keys exhausted`)
+  throw new Error(`${providerId}: all models/keys exhausted`)
 }
 
-// ── Anthropic caller ──────────────────────────────────────────────────────────
-async function callAnthropic(
-  quality: Quality, system: string, messages: Msg[], maxTokens: number,
-): Promise<{ text: string; model: string }> {
+// ── Anthropic (SDK) ───────────────────────────────────────────────────────────
+async function callAnthropic(q: Quality, system: string, msgs: Msg[], max: number, ec: EdgeCfg) {
   const key = getKeys('ANTHROPIC')[0]
-  if (!key) throw new Error('ANTHROPIC not configured')
-  const tiers = await getTiers()
-  const model = tiers.claude[quality]
+  if (!key) throw new Error('ANTHROPIC: no key')
+  const model = (ec.claude_tiers ?? CLAUDE_TIERS)[q] as string
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic({ apiKey: key })
-
-  const params: Parameters<typeof client.messages.create>[0] = {
-    model, max_tokens: maxTokens, system, messages,
-  }
-  if (quality === 'best') {
-    const budget = Math.min(10_000, Math.floor(maxTokens / 2))
-    ;(params as any).thinking = { type: 'enabled', budget_tokens: budget }
-  }
-
-  const res = await withTimeout(client.messages.create(params), 'Anthropic') as any
-  const textBlock = res.content.find((b: any) => b.type === 'text') as { text: string } | undefined
-  return { text: textBlock?.text ?? (res.content[0] as { text: string }).text, model }
+  const params: Parameters<typeof client.messages.create>[0] = { model, max_tokens: max, system, messages: msgs }
+  if (q === 'best') (params as unknown as Record<string, unknown>).thinking = { type: 'enabled', budget_tokens: Math.min(8000, Math.floor(max / 2)) }
+  const res = await withTimeout(client.messages.create(params), 'Anthropic') as { content: Array<{ type: string; text?: string }> }
+  const textBlock = res.content.find(b => b.type === 'text')
+  return { text: textBlock?.text ?? res.content[0]?.text ?? '', model }
 }
 
 // ── Core callAI ───────────────────────────────────────────────────────────────
-// Order: Ollama (local/free) → Groq (free) → Gemini (free) → Cerebras (free) → Anthropic (paid)
 export async function callAI(
   system: string,
   messages: Msg[],
   maxTokens = 1024,
   quality: Quality = 'balanced',
 ): Promise<AIResponse> {
-  const tiers = await getTiers()
+  const ec = await getEdgeConfig()
 
-  const providers = [
-    // ── Free tier (always try these first) ───────────────────────────────────
-    { name: 'ollama',    fn: () => callOllama(quality, system, messages, maxTokens) },
-    { name: 'groq',      fn: () => callProvider('https://api.groq.com/openai/v1',                          'Groq',     'GROQ',     tiers.groq[quality],     system, messages, maxTokens) },
-    { name: 'gemini',    fn: () => callProvider('https://generativelanguage.googleapis.com/v1beta/openai', 'Gemini',   'GEMINI',   tiers.gemini[quality],   system, messages, maxTokens) },
-    { name: 'cerebras',  fn: () => callProvider('https://api.cerebras.ai/v1',                              'Cerebras', 'CEREBRAS', tiers.cerebras[quality], system, messages, maxTokens) },
-    { name: 'nvidia',    fn: () => callProvider('https://integrate.api.nvidia.com/v1',                     'NVidia',   'NVIDIA',   tiers.nvidia[quality],   system, messages, maxTokens) },
-    { name: 'kimi',      fn: () => callProvider('https://api.moonshot.cn/v1',                              'Kimi',     'KIMI',     tiers.kimi[quality],     system, messages, maxTokens) },
-    // ── Paid fallback (only hit if all free tiers are exhausted) ─────────────
-    { name: 'openai',    fn: () => callProvider('https://api.openai.com/v1',                               'OpenAI',   'OPENAI',   tiers.openai[quality],   system, messages, maxTokens) },
-    { name: 'anthropic', fn: () => callAnthropic(quality, system, messages, maxTokens) },
-  ]
+  // Provider order: Edge Config → default
+  const order: string[] = (ec.fallback_order ?? DEFAULT_ORDER) as string[]
+  const disabled = new Set<string>((ec.disabled_providers ?? []) as string[])
 
   const tried: string[] = []
-  for (const { name, fn } of providers) {
+
+  for (const id of order) {
+    if (disabled.has(id)) continue
+
     try {
-      const { text, model } = await fn()
-      if (text) {
-        if (tried.length) console.warn(`[AI] fell back to ${name}/${model} after: ${tried.join(' → ')}`)
-        return { text, provider: name, model }
+      let result: { text: string; model: string }
+
+      if (id === 'ollama') {
+        result = await callOllama(quality, system, messages, maxTokens)
+      } else if (id === 'anthropic') {
+        result = await callAnthropic(quality, system, messages, maxTokens, ec)
+      } else {
+        result = await callGeneric(id, quality, system, messages, maxTokens, ec)
+      }
+
+      if (result.text) {
+        if (tried.length) console.warn(`[AI] fell back to ${id}/${result.model} after: ${tried.join(' → ')}`)
+        return { text: result.text, provider: id, model: result.model }
       }
     } catch (e: any) {
-      const msg = (e.message || '').slice(0, 120)
-      tried.push(`${name}(${msg})`)
-      console.warn(`[AI] ${name} failed — trying next. Reason: ${msg}`)
+      const msg = (e.message ?? '').slice(0, 100)
+      tried.push(`${id}(${msg.slice(0, 40)})`)
+      if (!isSkippable(msg) && !msg.includes('no API key') && !msg.includes('not set')) {
+        console.warn(`[AI] ${id} error — skipping. ${msg}`)
+      }
     }
   }
+
   throw new Error(`All AI providers exhausted. Tried: ${tried.join(' | ')}`)
 }
 
-// ── Convenience wrapper ───────────────────────────────────────────────────────
+// ── Convenience wrappers ──────────────────────────────────────────────────────
 export async function aiChat(
   messages: Msg[],
   systemPrompt?: string,
   maxTokens = 700,
   quality: Quality = 'balanced',
 ): Promise<string> {
-  const system = systemPrompt ?? _aiSystemPrompt
+  const system = systemPrompt ?? 'You are a helpful AI assistant.'
   const { text } = await callAI(system, messages, maxTokens, quality)
   return text
 }
 
 // ── In-memory response cache (1h TTL) ────────────────────────────────────────
 const _cache = new Map<string, { text: string; ts: number }>()
-const TTL    = 60 * 60 * 1000
+const CACHE_TTL = 60 * 60 * 1000
 
 export async function aiCached(key: string, fn: () => Promise<string>): Promise<string> {
   const hit = _cache.get(key)
-  if (hit && Date.now() - hit.ts < TTL) return hit.text
+  if (hit && Date.now() - hit.ts < CACHE_TTL) return hit.text
   const text = await fn()
   _cache.set(key, { text, ts: Date.now() })
   return text
+}
+
+// ── Debug helper ──────────────────────────────────────────────────────────────
+export async function getProviderStatus(): Promise<Record<string, { hasKey: boolean; models: string[] }>> {
+  const ec = await getEdgeConfig()
+  const order = (ec.fallback_order ?? DEFAULT_ORDER) as string[]
+  const status: Record<string, { hasKey: boolean; models: string[] }> = {}
+  for (const id of order) {
+    if (id === 'ollama') { status[id] = { hasKey: !!process.env.OLLAMA_HOST, models: OLLAMA_TIERS.balanced }; continue }
+    if (id === 'anthropic') { status[id] = { hasKey: !!getKeys('ANTHROPIC').length, models: [CLAUDE_TIERS.balanced] }; continue }
+    const def = DEFAULTS[id]
+    if (!def) continue
+    const ecTiers = ec[`${id}_tiers`] as Record<Quality, string[]> | undefined
+    status[id] = { hasKey: !!getKeys(def.keyEnv).length, models: ecTiers?.balanced ?? def.tiers.balanced }
+  }
+  return status
 }
